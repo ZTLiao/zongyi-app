@@ -7,12 +7,6 @@ android {
     namespace = "com.zongyi.box"
     compileSdk = 36
 
-    // Notix SDK 传递依赖把 kotlin-stdlib 拉到 2.1.0，超出本项目编译器(2.0.21)能读取的
-    // 元数据版本，会报 "Unresolved reference 'Pair'" 等 stdlib 错误，这里强制对齐
-    configurations.all {
-        resolutionStrategy.force("org.jetbrains.kotlin:kotlin-stdlib:2.0.21")
-    }
-
     defaultConfig {
         applicationId = "com.zongyi.box"
         minSdk = 24
@@ -77,9 +71,6 @@ dependencies {
 
     // 协程
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-
-    // 广告变现：Monetag（Notix 内核）安卓 SDK，支持插屏 + Push，收益支持 USDT 提现
-    implementation("co.notix:android-sdk:0.1.+")
 
     // 单元测试
     testImplementation("junit:junit:4.13.2")

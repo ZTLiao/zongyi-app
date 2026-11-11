@@ -43,17 +43,6 @@ class PlayerActivity : AppCompatActivity() {
 
     private lateinit var b: ActivityPlayerBinding
 
-    /** 退出播放器时展示一次插屏广告（未配置 Zone ID 时静默跳过） */
-    private var adShownOnExit = false
-
-    override fun finish() {
-        if (!adShownOnExit) {
-            adShownOnExit = true
-            com.zongyi.box.ads.AdManager.showInterstitial(this)
-        }
-        super.finish()
-    }
-
     private var vodId = -1
     private var sid = -1
     private var nid = -1

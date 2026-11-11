@@ -9,7 +9,7 @@
 - **播放**：GSYVideoPlayer 14.0（Media3/Exo 内核），原生 HLS 解码渲染
 - **网络/解析**：OkHttp + Jsoup（HTML 结构化解析，不执行站点脚本）
 - **存储**：Gson + 文件（历史/收藏，轻量零依赖）
-- **广告**：Monetag（`co.notix:android-sdk`）插屏，退出播放器时触发，收益支持 USDT 提现
+- **广告**：Adsterra Direct Link（SmartLink，纯 WebView 接入，无第三方 SDK），开屏全屏广告 + 详情页底部 banner，收益支持 USDT 提现
 
 ## 功能
 
@@ -46,7 +46,7 @@
 
 ## 已知边界
 
-- **广告配置**：在 https://publishers.monetag.com 注册并在后台「Add new Android app」创建 Interstitial Zone 后，把 Zone ID 填入 `app/src/main/java/com/zongyi/box/ads/AdManager.kt` 的 `INTERSTITIAL_ZONE_ID`（当前为 0，未配置时 SDK 不加载不展示）。收款方式选 Cryptocurrencies → USDT（TRC20/ERC20/BEP20），最低提现 $100
+- **广告配置**：在 https://publishers.adsterra.com 后台创建 Direct Link（SmartLink），把链接填入 `app/src/main/java/com/zongyi/box/ads/AdManager.kt` 的 `SMARTLINK_URL`（开屏 + 详情页 banner 共用）；若日后拿到正式 Banner 广告标签，填入 `BANNER_TAG_URL` 可让详情页横幅切换为 WebView 渲染标签。收款方式选 USDT 加密提现（TRC20/ERC20/BEP20），最低提现 $100。**注**：Adsterra 落地页常为 http 明文且域名随广告计划变化，故 `usesCleartextTraffic` 与 `network_security_config` 均放开明文（本 App 不传敏感数据，风险可控）
 - 各线路分集数可能不一致（某线路更新滞后），App 已按线路独立展示分集数
 - 播放失败优先切换线路（站点线路源可用性波动大）
 - 首次播放需请求播放页提取 m3u8 直链，线路切换/选集会重新请求
