@@ -81,84 +81,162 @@ object SiteApi {
         }
     }
 
-    /** 首页（按来源） */
-    suspend fun home(src: Src): HomeData = when (src) {
-        Src.JUZI -> Parser.parseHome(getHtml(Parser.BASE + "/"))
-        Src.DY555 -> Parser55.parseHome(getHtml(Src.DY555.base + "/"))
+    /**
+     * 首页（按来源）。
+     * @param ttlMs 新鲜缓存窗口（毫秒），>0 且缓存命中时直接解析缓存跳过网络（页面秒开）；
+     *              拉刷新等强制更新场景传 0
+     */
+    suspend fun home(src: Src, ttlMs: Long = 0): HomeData = withContext(Dispatchers.Default) {
+        val t0 = System.currentTimeMillis()
+        val url = when (src) {
+            Src.JUZI -> Parser.BASE + "/"
+            Src.DY555 -> Src.DY555.base + "/"
+        }
+        HttpCache.loadFresh(url, ttlMs)?.let { cached ->
+            val data = if (src == Src.JUZI) Parser.parseHome(cached)
+            else Parser55.parseHome(cached)
+            Log.i(TAG, "首页[${src.label}] 缓存秒开 ${System.currentTimeMillis() - t0}ms")
+            return@withContext data
+        }
+        val data = when (src) {
+            Src.JUZI -> Parser.parseHome(getHtml(Parser.BASE + "/"))
+            Src.DY555 -> Parser55.parseHome(getHtml(Src.DY555.base + "/"))
+        }
+        Log.i(TAG, "首页[${src.label}] 网络加载 ${System.currentTimeMillis() - t0}ms")
+        data
     }
 
-    /** 分类列表（按来源） */
-    suspend fun category(src: Src, cat: Int, sort: String, year: String, page: Int): PageData =
-        when (src) {
-            Src.JUZI -> Parser.parsePage(getHtml(Parser.categoryUrl(cat, sort, "", page, year)), page)
-            Src.DY555 -> Parser55.parsePage(getHtml(Parser55.typeUrl(cat)), page)
+    /** 分类列表（按来源）。ttlMs 同 home() */
+    suspend fun category(
+        src: Src, cat: Int, sort: String, year: String, page: Int, ttlMs: Long = 0,
+    ): PageData {
+        val url = when (src) {
+            Src.JUZI -> Parser.categoryUrl(cat, sort, "", page, year)
+            Src.DY555 -> Parser55.typeUrl(cat)
         }
+        return withContext(Dispatchers.Default) {
+            val cached = HttpCache.loadFresh(url, ttlMs)
+            if (cached != null) return@withContext when (src) {
+                Src.JUZI -> Parser.parsePage(cached, page)
+                Src.DY555 -> Parser55.parsePage(cached, page)
+            }
+            when (src) {
+                Src.JUZI -> Parser.parsePage(getHtml(url), page)
+                Src.DY555 -> Parser55.parsePage(getHtml(url), page)
+            }
+        }
+    }
 
     /**
-     * 555 vodshow 精细筛选列表（地区/排序/类型/语言/年份 + 分页）。
+     * 555 vodshow 精细筛选列表（地区/排序/类型/语言/年份 + 分页）。ttlMs 同 home()
      */
     suspend fun category555(
         cat: Int, area: String, by: String, cls: String,
-        lang: String, year: String, page: Int,
-    ): PageData = Parser55.parsePage(
-        getHtml(Parser55.vodshowUrl(cat, area, by, cls, lang, year, page)), page
-    )
+        lang: String, year: String, page: Int, ttlMs: Long = 0,
+    ): PageData {
+        val url = Parser55.vodshowUrl(cat, area, by, cls, lang, year, page)
+        return withContext(Dispatchers.Default) {
+            val cached = HttpCache.loadFresh(url, ttlMs)
+            if (cached != null) return@withContext Parser55.parsePage(cached, page)
+            Parser55.parsePage(getHtml(url), page)
+        }
+    }
 
     private val filtersCache = java.util.concurrent.ConcurrentHashMap<String, List<Parser55.FilterGroup>>()
 
     /** 555 筛选选项组（按 分类+域名 缓存，站点改动或切域名后自动失效重取） */
-    suspend fun filters555(cat: Int): List<Parser55.FilterGroup> {
+    suspend fun filters555(cat: Int): List<Parser55.FilterGroup> = withContext(Dispatchers.Default) {
         val key = "${Src.DY555.base}|$cat"
-        filtersCache[key]?.let { return it }
+        filtersCache[key]?.let { return@withContext it }
         val groups = Parser55.parseFilters(getHtml(Parser55.vodshowUrl(cat)))
         if (groups.isNotEmpty()) filtersCache[key] = groups
-        return groups
+        groups
     }
 
     /** 搜索（按来源） */
     suspend fun search(src: Src, kw: String, page: Int): PageData {
         val encoded = java.net.URLEncoder.encode(kw, "UTF-8")
-        return when (src) {
-            Src.JUZI -> {
-                val html = getHtml(Parser.searchUrl(encoded, page))
-                if (Parser.isSearchEmpty(html)) PageData(emptyList(), page, 1)
-                else Parser.parsePage(html, page)
-            }
-            Src.DY555 -> {
-                val html = getHtml(Parser55.searchUrl(encoded))
-                if (Parser55.isSearchEmpty(html)) PageData(emptyList(), 1, 1)
-                else Parser55.parsePage(html, 1)
+        return withContext(Dispatchers.Default) {
+            when (src) {
+                Src.JUZI -> {
+                    val html = getHtml(Parser.searchUrl(encoded, page))
+                    if (Parser.isSearchEmpty(html)) PageData(emptyList(), page, 1)
+                    else Parser.parsePage(html, page)
+                }
+                Src.DY555 -> {
+                    val html = getHtml(Parser55.searchUrl(encoded))
+                    if (Parser55.isSearchEmpty(html)) PageData(emptyList(), 1, 1)
+                    else Parser55.parsePage(html, 1)
+                }
             }
         }
     }
 
-    /** 详情（含全部线路×分集，按来源） */
-    suspend fun detail(src: Src, id: Int): VodDetail = when (src) {
-        Src.JUZI -> Parser.parseDetail(getHtml(Parser.detailUrl(id)), id)
-        Src.DY555 -> Parser55.parseDetail(getHtml(Parser55.detailUrl(id)), id)
+    /** 详情（含全部线路×分集，按来源）。ttlMs 同 home() */
+    suspend fun detail(src: Src, id: Int, ttlMs: Long = 0): VodDetail {
+        val t0 = System.currentTimeMillis()
+        val url = when (src) {
+            Src.JUZI -> Parser.detailUrl(id)
+            Src.DY555 -> Parser55.detailUrl(id)
+        }
+        return withContext(Dispatchers.Default) {
+            val cached = HttpCache.loadFresh(url, ttlMs)
+            if (cached != null) {
+                val d = when (src) {
+                    Src.JUZI -> Parser.parseDetail(cached, id)
+                    Src.DY555 -> Parser55.parseDetail(cached, id)
+                }
+                Log.i(TAG, "详情[$id] 缓存秒开 ${System.currentTimeMillis() - t0}ms")
+                return@withContext d
+            }
+            val d = when (src) {
+                Src.JUZI -> Parser.parseDetail(getHtml(url), id)
+                Src.DY555 -> Parser55.parseDetail(getHtml(url), id)
+            }
+            Log.i(TAG, "详情[$id] 网络加载 ${System.currentTimeMillis() - t0}ms")
+            d
+        }
     }
+
+    // ---------- 播放链路会话缓存 ----------
+
+    /** 播放地址记忆（切集往返秒开，会话级，超量整体清空） */
+    private val streamCache = java.util.concurrent.ConcurrentHashMap<String, StreamInfo>()
+    /** 已清洗 m3u8 的本地播放列表：url → (文件, 过滤分片数)，避免重复拉取/清洗 */
+    private val cleanedPlaylists = java.util.concurrent.ConcurrentHashMap<String, kotlin.Pair<String, Int>>()
 
     /** 播放页 → 播放地址（player_aaaa 两站同构） */
     suspend fun stream(src: Src, id: Int, sid: Int, nid: Int): StreamInfo {
+        val ck = "${src.key}|$id|$sid|$nid"
+        streamCache[ck]?.let { return it }
         val html = when (src) {
             Src.JUZI -> getHtml(Parser.playUrl(id, sid, nid))
             Src.DY555 -> getHtml(Parser55.playUrl(id, sid, nid))
         }
-        val info = Parser.parsePlayPage(html)
-            ?: throw IllegalStateException("未能从播放页提取视频地址 (src=${src.key} id=$id sid=$sid nid=$nid)")
-        return info.copy(nid = nid)
+        val info = withContext(Dispatchers.Default) {
+            Parser.parsePlayPage(html)
+                ?: throw IllegalStateException("未能从播放页提取视频地址 (src=${src.key} id=$id sid=$sid nid=$nid)")
+        }
+        val result = info.copy(nid = nid)
+        if (streamCache.size >= 40) streamCache.clear()
+        streamCache[ck] = result
+        return result
     }
-
-    // ---------- 播放前广告过滤 ----------
 
     /**
      * 取流预处理：拉取 m3u8 → 剔除 CDN 注入的广告分片（博彩等）→ 落盘为本地播放列表。
+     * 同一 url 本会话内已清洗过 → 直接复用本地播放列表，零网络等待。
      *
      * @return 可直接交给播放器的地址。无广告时返回原始 url；
      *         有广告时返回 "file://..." 本地播放列表（分片已改写为绝对地址）。
      *         任何异常都不会阻断播放：失败时静默返回原始 url。
      */
     suspend fun prepareStream(url: String, cacheDir: java.io.File): PreparedStream = withContext(Dispatchers.IO) {
+        cleanedPlaylists[url]?.let { (path, removed) ->
+            val f = java.io.File(path)
+            if (f.exists() && f.length() > 0) return@withContext PreparedStream("file://" + path, removed)
+            cleanedPlaylists.remove(url)
+        }
         try {
             var text = fetchText(url)
             var effectiveUrl = url
@@ -178,6 +256,7 @@ object SiteApi {
             val dir = java.io.File(cacheDir, "hls").apply { mkdirs() }
             val f = java.io.File(dir, java.lang.Integer.toHexString(url.hashCode()) + ".m3u8")
             f.writeText(result.cleaned)
+            cleanedPlaylists[url] = kotlin.Pair(f.absolutePath, result.removedSegments)
             PreparedStream("file://" + f.absolutePath, result.removedSegments)
         } catch (ce: CancellationException) {
             throw ce

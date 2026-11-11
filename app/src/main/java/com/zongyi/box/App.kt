@@ -15,6 +15,7 @@ class App : Application(), ImageLoaderFactory {
         super.onCreate()
         HttpCache.init(this)
         DomainStore.init(this)
+        com.zongyi.box.ads.AdManager.init(this)
     }
 
     /**
@@ -37,6 +38,9 @@ class App : Application(), ImageLoaderFactory {
             .build()
         return ImageLoader.Builder(this)
             .okHttpClient(client)
+            // 站点 CDN 常下发 no-store/no-cache，会导致封面反复重新下载、滑动卡顿；
+            // 这里无视响应缓存头，封面一律走 Coil 本地磁盘缓存（海报内容基本不变）
+            .respectCacheHeaders(false)
             .build()
     }
 }

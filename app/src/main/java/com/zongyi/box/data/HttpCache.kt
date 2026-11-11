@@ -23,8 +23,11 @@ object HttpCache {
 
     fun init(context: Context) {
         dir = File(context.cacheDir, "http").apply { mkdirs() }
-        val cutoff = System.currentTimeMillis() - TTL_MS
-        dir.listFiles()?.forEach { if (it.lastModified() < cutoff) it.delete() }
+        // 过期清理涉及目录遍历 + 多次删除，放后台线程执行，不拖慢 App 启动主线程
+        Thread {
+            val cutoff = System.currentTimeMillis() - TTL_MS
+            dir.listFiles()?.forEach { if (it.lastModified() < cutoff) it.delete() }
+        }.start()
     }
 
     private fun key(url: String): String {
@@ -38,6 +41,22 @@ object HttpCache {
         val f = File(dir, key(url))
         try {
             if (f.exists() && f.length() > 0) f.readText() else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * 新鲜缓存直读（stale-while-revalidate 的"立即返回旧数据"路径）：
+     * 缓存文件在 maxAgeMs 内写入过 → 直接返回内容跳过网络，页面秒开。
+     */
+    suspend fun loadFresh(url: String, maxAgeMs: Long): String? = withContext(Dispatchers.IO) {
+        if (!::dir.isInitialized || maxAgeMs <= 0) return@withContext null
+        val f = File(dir, key(url))
+        try {
+            if (f.exists() && f.length() > 0 &&
+                System.currentTimeMillis() - f.lastModified() <= maxAgeMs
+            ) f.readText() else null
         } catch (_: Exception) {
             null
         }

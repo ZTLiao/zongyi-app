@@ -24,9 +24,9 @@ class MainActivity : AppCompatActivity() {
 
         binding.bottomNav.setOnItemSelectedListener { item ->
             when (item.itemId) {
-                R.id.nav_home -> switchTo(HomeFragment())
-                R.id.nav_category -> switchTo(CategoryFragment())
-                R.id.nav_mine -> switchTo(MineFragment())
+                R.id.nav_home -> switchTo(R.id.nav_home)
+                R.id.nav_category -> switchTo(R.id.nav_category)
+                R.id.nav_mine -> switchTo(R.id.nav_mine)
                 R.id.nav_search -> {
                     startActivity(Intent(this, SearchActivity::class.java))
                     return@setOnItemSelectedListener false
@@ -35,15 +35,41 @@ class MainActivity : AppCompatActivity() {
             true
         }
 
-        if (savedInstanceState == null) switchTo(HomeFragment())
-        else binding.bottomNav.selectedItemId =
-            savedInstanceState.getInt("tab", R.id.nav_home)
+        if (savedInstanceState == null) switchTo(R.id.nav_home)
+        else {
+            val tab = savedInstanceState.getInt("tab", R.id.nav_home)
+            binding.bottomNav.selectedItemId = tab
+            // selectedItemId 已等于该值时监听器不会触发，显式补一次切换
+            switchTo(tab)
+        }
     }
 
-    private fun switchTo(f: Fragment) {
-        supportFragmentManager.beginTransaction()
-            .replace(R.id.container, f)
-            .commitAllowingStateLoss()
+    /**
+     * Tab 切换：Fragment 按 tag 复用（findFragmentByTag），add/show/hide 保活，
+     * 切回不再重建视图、不再重新请求网络（旋转屏幕后也能从 FragmentManager 恢复）。
+     */
+    private fun switchTo(navId: Int) {
+        val targetTag = when (navId) {
+            R.id.nav_category -> "category"
+            R.id.nav_mine -> "mine"
+            else -> "home"
+        }
+        val fm = supportFragmentManager
+        val tabs = mapOf(
+            "home" to { HomeFragment() },
+            "category" to { CategoryFragment() },
+            "mine" to { MineFragment() },
+        )
+        fm.beginTransaction().apply {
+            tabs.forEach { (tag, create) ->
+                val f = fm.findFragmentByTag(tag) ?: create()
+                if (tag == targetTag) {
+                    if (f.isAdded) show(f) else add(R.id.container, f, tag)
+                } else if (f.isAdded) {
+                    hide(f)
+                }
+            }
+        }.commitAllowingStateLoss()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

@@ -43,6 +43,17 @@ class PlayerActivity : AppCompatActivity() {
 
     private lateinit var b: ActivityPlayerBinding
 
+    /** 退出播放器时展示一次插屏广告（未配置 Zone ID 时静默跳过） */
+    private var adShownOnExit = false
+
+    override fun finish() {
+        if (!adShownOnExit) {
+            adShownOnExit = true
+            com.zongyi.box.ads.AdManager.showInterstitial(this)
+        }
+        super.finish()
+    }
+
     private var vodId = -1
     private var sid = -1
     private var nid = -1
@@ -59,6 +70,12 @@ class PlayerActivity : AppCompatActivity() {
     private var retryCount = 0
     private var retryPending = false
     private val MAX_RETRY = 3
+
+    // 当前集的播放地址：用于区分"当前集"的完成/错误回调与切换时旧播放器释放产生的伪回调
+    private var currentUrl: String? = null
+
+    // 切集防重入：从发起切换到新流真正开播期间，忽略再次的切集请求
+    private var switching = false
 
     // 历史进度轮询
     private var pollTask: Runnable? = null
@@ -115,6 +132,7 @@ class PlayerActivity : AppCompatActivity() {
         b.player.setVideoAllCallBack(object : VideoAllCallBack {
             override fun onStartPrepared(s: String?, vararg objects: Any?) {}
             override fun onPrepared(s: String?, vararg objects: Any?) {
+                android.util.Log.i("ZongYiBox", "onPrepared s=$s current=$currentUrl")
                 retryCount = 0
                 retryPending = false
             }
@@ -129,6 +147,22 @@ class PlayerActivity : AppCompatActivity() {
             override fun onClickSeekbarFullscreen(s: String?, vararg objects: Any?) {}
             override fun onAutoComplete(s: String?, vararg objects: Any?) {}
             override fun onComplete(s: String?, vararg objects: Any?) {
+                // 只有"当前正在播放的这一集"自然播完才自动连播。
+                // 切换集数时旧播放器被释放/中断也会触发本回调（s 是旧集 URL），
+                // 不加过滤会造成"切一集就连锁跳到底"的 bug。
+                if (s == null || s != currentUrl) {
+                    android.util.Log.i("ZongYiBox", "onComplete(忽略:非当前集) s=$s current=$currentUrl")
+                    return
+                }
+                // 二次过滤：切集时 GSY 在 startPlayLogic 后会立刻回一次伪完成回调
+                // （pos=0 / dur=新集时长），只有真实播完（pos 接近 dur）才自动连播
+                val pos = b.player.currentPositionWhenPlaying
+                val dur = b.player.duration
+                if (pos <= 0 || dur <= 0 || pos < dur - 60_000) {
+                    android.util.Log.i("ZongYiBox", "onComplete(忽略:未真实播完) pos=$pos dur=$dur")
+                    return
+                }
+                android.util.Log.i("ZongYiBox", "onComplete(生效) pos=$pos dur=$dur")
                 saveHistory()
                 // 追更场景：本集播完自动连播下一集
                 uiHandler.post {
@@ -145,6 +179,8 @@ class PlayerActivity : AppCompatActivity() {
             override fun onTouchScreenSeekPosition(s: String?, vararg objects: Any?) {}
             override fun onTouchScreenSeekLight(s: String?, vararg objects: Any?) {}
             override fun onPlayError(s: String?, vararg objects: Any?) {
+                // 同 onComplete：忽略旧播放器释放时产生的伪错误回调
+                if (s == null || s != currentUrl) return
                 autoRetry()
             }
 
@@ -192,7 +228,9 @@ class PlayerActivity : AppCompatActivity() {
                     Toast.makeText(this@PlayerActivity, "已自动过滤 ${prepared.removedAdSegments} 段广告", Toast.LENGTH_SHORT).show()
                 }
                 startStream(prepared.url, stream.from)
+                switching = false
             }.onFailure { e ->
+                switching = false
                 if (e is CancellationException) return@onFailure
                 b.tvError.isVisible = true
                 b.tvError.text = "获取视频地址失败：${e.message}\n点击重试，或切换线路"
@@ -205,6 +243,8 @@ class PlayerActivity : AppCompatActivity() {
         val p: StandardGSYVideoPlayer = b.player
         // 请求头伪装成浏览器；站点 m3u8 无 Referer 校验，直接播放
         p.setUp(url, false, null as java.io.File?, BrowserHeaders.media(), title)
+        currentUrl = url
+        android.util.Log.i("ZongYiBox", "startStream url=$url")
         // 断点续播：首次进入时定位到上次观看位置
         p.setSeekOnStart(if (!resumed) resumePos() else 0)
         p.setSpeed(speeds[speedIndex])
@@ -272,10 +312,16 @@ class PlayerActivity : AppCompatActivity() {
     private fun currentSource() = detail?.source(sid) ?: detail?.firstAvailable()
 
     private fun switchTo(ep: Episode) {
+        // 防重入：上一集的切换还没完成（异步取流中）时，忽略新的切集请求，
+        // 防止连播回调与手动切换互相触发形成"一直跳下去"的连锁
+        if (switching) return
+        switching = true
+        // 先把当前集的进度落到历史（此时 nid 还是旧集），再切换
+        saveHistory()
         nid = ep.nid
         resumed = false
+        android.util.Log.i("ZongYiBox", "切集: sid=$sid nid=$nid ${ep.name}")
         play()
-        saveHistory()
         Toast.makeText(this, "正在播放：${ep.name}", Toast.LENGTH_SHORT).show()
     }
 

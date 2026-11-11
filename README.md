@@ -1,8 +1,6 @@
 # 综艺盒子（ZongYiBox）
 
-个人自用的综艺追更/播放 Android 客户端。纯原生 Kotlin 实现，无 WebView、无广告、无第三方跳转。
-
-> ⚠️ 仅限个人自用，请勿分发。
+综艺追更/播放 Android 客户端。纯原生 Kotlin 实现，无 WebView、无第三方跳转。
 
 ## 技术栈
 
@@ -11,6 +9,7 @@
 - **播放**：GSYVideoPlayer 14.0（Media3/Exo 内核），原生 HLS 解码渲染
 - **网络/解析**：OkHttp + Jsoup（HTML 结构化解析，不执行站点脚本）
 - **存储**：Gson + 文件（历史/收藏，轻量零依赖）
+- **广告**：Monetag（`co.notix:android-sdk`）插屏，退出播放器时触发，收益支持 USDT 提现
 
 ## 功能
 
@@ -47,6 +46,7 @@
 
 ## 已知边界
 
+- **广告配置**：在 https://publishers.monetag.com 注册并在后台「Add new Android app」创建 Interstitial Zone 后，把 Zone ID 填入 `app/src/main/java/com/zongyi/box/ads/AdManager.kt` 的 `INTERSTITIAL_ZONE_ID`（当前为 0，未配置时 SDK 不加载不展示）。收款方式选 Cryptocurrencies → USDT（TRC20/ERC20/BEP20），最低提现 $100
 - 各线路分集数可能不一致（某线路更新滞后），App 已按线路独立展示分集数
 - 播放失败优先切换线路（站点线路源可用性波动大）
 - 首次播放需请求播放页提取 m3u8 直链，线路切换/选集会重新请求

@@ -37,6 +37,11 @@ class DetailActivity : AppCompatActivity() {
     private var srcKey = com.zongyi.box.data.Src.JUZI.key
     private var prefillTitle = ""
     private var prefillCover = ""
+    /** 用户是否手动换过线路：后台静默刷新时不打扰已交互的界面 */
+    private var userInteracted = false
+
+    /** 详情页新鲜缓存窗口 */
+    private val detailTtlMs = 15 * 60_000L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,7 +76,7 @@ class DetailActivity : AppCompatActivity() {
             renderFav(fav)
         }
 
-        load()
+        load(fromCache = true)
     }
 
     override fun onResume() {
@@ -96,15 +101,20 @@ class DetailActivity : AppCompatActivity() {
         b.btnFav.setColorFilter(getColor(if (fav) R.color.accent else R.color.text_secondary))
     }
 
-    private fun load() {
+    private fun load(fromCache: Boolean = false) {
         b.progress.isVisible = true
         b.tvError.isVisible = false
+        val ttl = if (fromCache) detailTtlMs else 0
         lifecycleScope.launch {
-            runSuspendCatching { SiteApi.detail(com.zongyi.box.data.Src.of(srcKey), vodId) }
+            runSuspendCatching { SiteApi.detail(com.zongyi.box.data.Src.of(srcKey), vodId, ttl) }
                 .onSuccess { d ->
+                    val firstLoad = detail == null
+                    val changed = detail != d
                     detail = d
                     render(d)
                     b.progress.isVisible = false
+                    // 缓存秒开后，后台静默拉最新；内容有变化且用户未操作时才重绘
+                    if (fromCache && firstLoad && changed) refreshInBackground()
                 }
                 .onFailure { e ->
                     if (e is CancellationException) return@onFailure
@@ -112,6 +122,17 @@ class DetailActivity : AppCompatActivity() {
                     b.tvError.isVisible = true
                     b.tvError.text = "加载失败：${e.message}\n点击重试"
                     b.tvError.setOnClickListener { load() }
+                }
+        }
+    }
+
+    private fun refreshInBackground() {
+        lifecycleScope.launch {
+            runSuspendCatching { SiteApi.detail(com.zongyi.box.data.Src.of(srcKey), vodId, 0) }
+                .onSuccess { d ->
+                    if (d == detail) return@onSuccess
+                    detail = d
+                    if (!userInteracted && !isDestroyed && !isFinishing) render(d)
                 }
         }
     }
@@ -154,6 +175,7 @@ class DetailActivity : AppCompatActivity() {
     }
 
     private fun selectSource(sid: Int) {
+        userInteracted = true
         currentSid = sid
         renderEpisodes()
     }

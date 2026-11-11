@@ -41,6 +41,10 @@ class HomeFragment : Fragment() {
     private val b get() = _b!!
     private val handler = Handler(Looper.getMainLooper())
     private var bannerTask: Runnable? = null
+    private var adapter: HomeAdapter? = null
+
+    /** 首页数据新鲜缓存窗口：进入页面先显缓存秒开，后台再刷新 */
+    private val homeTtlMs = 10 * 60_000L
 
     override fun onCreateView(i: LayoutInflater, c: ViewGroup?, s: Bundle?): View {
         _b = FragmentHomeBinding.inflate(i, c, false)
@@ -49,26 +53,27 @@ class HomeFragment : Fragment() {
 
     override fun onViewCreated(v: View, s: Bundle?) {
         b.refresh.setColorSchemeResources(R.color.accent)
-        b.refresh.setOnRefreshListener { load() }
+        b.refresh.setOnRefreshListener { load(forceNetwork = true) }
         b.rvHome.layoutManager = LinearLayoutManager(requireContext())
-        b.tvError.setOnClickListener { load() }
-        b.tvSrcStatus.setOnClickListener { load() }
-        load()
+        b.tvError.setOnClickListener { load(forceNetwork = false) }
+        b.tvSrcStatus.setOnClickListener { load(forceNetwork = false) }
+        load(forceNetwork = false)
     }
 
-    private fun load() {
+    private fun load(forceNetwork: Boolean) {
         b.tvError.visibility = View.GONE
         b.tvSrcStatus.visibility = View.GONE
         b.refresh.isRefreshing = true
+        val ttl = if (forceNetwork) 0 else homeTtlMs
         viewLifecycleOwner.lifecycleScope.launch {
             // 双源并发加载；单站失败不影响另一站展示
             val jz = async {
-                runSuspendCatching { SiteApi.home(Src.JUZI) }
+                runSuspendCatching { SiteApi.home(Src.JUZI, ttl) }
                     .onFailure { Log.w(TAG, "综艺盒子源加载失败", it) }
                     .getOrNull()
             }
             val dy = async {
-                runSuspendCatching { SiteApi.home(Src.DY555) }
+                runSuspendCatching { SiteApi.home(Src.DY555, ttl) }
                     .onFailure { Log.w(TAG, "555影视源加载失败", it) }
                     .getOrNull()
             }
@@ -83,13 +88,30 @@ class HomeFragment : Fragment() {
                 }
                 return@launch
             }
-            b.rvHome.adapter = HomeAdapter(data) { Nav.detail(requireContext(), it) }
+            render(data)
             // 单源失败时给出可见提示（内容仍可看，但用户应知道哪个源挂了）
             if (jzData == null || dyData == null) {
                 val lost = if (jzData == null) "综艺盒子" else "555影视"
                 b.tvSrcStatus.text = "「$lost」源暂时连不上，其余内容正常 · 点击重试"
                 b.tvSrcStatus.visibility = View.VISIBLE
             }
+            // 缓存秒开后，后台静默拉最新数据，内容有变化才无感更新列表
+            if (!forceNetwork) launch {
+                val jz2 = async { runSuspendCatching { SiteApi.home(Src.JUZI) }.getOrNull() }
+                val dy2 = async { runSuspendCatching { SiteApi.home(Src.DY555) }.getOrNull() }
+                val fresh = mergeHome(jz2.await(), dy2.await())
+                if (_b != null && fresh != null && fresh != data) render(fresh)
+            }
+        }
+    }
+
+    /** 复用 adapter 增量刷新，避免整表重建导致的滚动位置丢失与图片闪烁 */
+    private fun render(data: HomeData) {
+        val a = adapter
+        if (a == null) {
+            adapter = HomeAdapter(data) { Nav.detail(requireContext(), it) }.also { b.rvHome.adapter = it }
+        } else {
+            a.submit(data)
         }
     }
 
@@ -102,12 +124,18 @@ class HomeFragment : Fragment() {
 
 /** 首页多类型列表：Banner + 版块 */
 class HomeAdapter(
-    private val data: HomeData,
+    private var data: HomeData,
     private val onClick: (VodItem) -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
-    private val sections = data.sections
-    private val hasBanner = data.banner.isNotEmpty()
+    private val sections get() = data.sections
+    private val hasBanner get() = data.banner.isNotEmpty()
+
+    /** 数据更新：整体内容变化时调用（Coil 内存缓存使封面无闪烁） */
+    fun submit(d: HomeData) {
+        data = d
+        notifyDataSetChanged()
+    }
 
     inner class BannerVH(val b: ItemHomeBannerBinding) : RecyclerView.ViewHolder(b.root) {
         // 当前 VH 绑定的轮播任务，重绑时先移除旧的，避免任务堆积

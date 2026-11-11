@@ -49,6 +49,9 @@ class CategoryFragment : Fragment() {
     private var loading = false
     private lateinit var adapter: VodGridAdapter
 
+    /** 列表新鲜缓存窗口：切分类/切筛选/翻页命中缓存时免网络秒出 */
+    private val listTtlMs = 5 * 60_000L
+
     override fun onCreateView(i: LayoutInflater, c: ViewGroup?, s: Bundle?): View {
         _b = FragmentCategoryBinding.inflate(i, c, false)
         return b.root
@@ -168,11 +171,12 @@ class CategoryFragment : Fragment() {
         }
         viewLifecycleOwner.lifecycleScope.launch {
             runSuspendCatching {
-                if (src == Src.JUZI) SiteApi.category(src, cat, sort, year, p)
+                if (src == Src.JUZI) SiteApi.category(src, cat, sort, year, p, ttlMs = listTtlMs)
                 else SiteApi.category555(
                     cat,
                     area = sel555[1] ?: "", by = sel555[2] ?: "", cls = sel555[3] ?: "",
-                    lang = sel555[4] ?: "", year = sel555[11] ?: "", page = p
+                    lang = sel555[4] ?: "", year = sel555[11] ?: "", page = p,
+                    ttlMs = listTtlMs
                 )
             }
                 .onSuccess { data ->
