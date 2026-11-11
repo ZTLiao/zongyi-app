@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="BannerCorner" parent="">
+        <item name="cornerSize">12dp</item>
+    </style>
+    <style name="PosterCorner" parent="">
+        <item name="cornerSize">8dp</item>
+    </style>
+</resources>

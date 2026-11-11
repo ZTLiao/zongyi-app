@@ -1,0 +1,2 @@
+-keep class com.zongyi.box.data.** { *; }
+-dontwarn okhttp3.**

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">综艺盒子</string>
+    <string name="tab_home">首页</string>
+    <string name="tab_category">分类</string>
+    <string name="tab_search">搜索</string>
+    <string name="tab_mine">我的</string>
+    <string name="hint_search">搜索综艺名称…</string>
+    <string name="loading">加载中…</string>
+    <string name="load_failed">加载失败，点击重试</string>
+    <string name="empty">暂无内容</string>
+    <string name="history">观看历史</string>
+    <string name="favorites">我的收藏</string>
+    <string name="switch_line">切换线路</string>
+    <string name="switch_quality">画质</string>
+    <string name="episode_list">选集</string>
+</resources>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#0E0F14</color>
+    <color name="surface">#171A21</color>
+    <color name="surface2">#1E222B</color>
+    <color name="accent">#FF6A3D</color>
+    <color name="accent_dark">#C24A26</color>
+    <color name="text_primary">#F2F3F5</color>
+    <color name="text_secondary">#9AA0A6</color>
+    <color name="divider">#232830</color>
+    <color name="badge">#E8443A</color>
+    <color name="nav_inactive">#6B7280</color>
+    <color name="black_overlay">#88000000</color>
+</resources>
