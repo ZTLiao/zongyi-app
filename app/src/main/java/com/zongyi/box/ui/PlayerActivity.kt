@@ -1,32 +1,23 @@
 package com.zongyi.box.ui
 
 import android.annotation.SuppressLint
-import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.view.GestureDetector
-import android.view.MotionEvent
 import android.view.View
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
-import androidx.media3.common.C
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MimeTypes
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.PlaybackParameters
-import androidx.media3.common.Player
-import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
-import androidx.media3.ui.PlayerView
-import androidx.media3.ui.TrackSelectionDialogBuilder
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
+import com.shuyu.gsyvideoplayer.GSYVideoManager
+import com.shuyu.gsyvideoplayer.listener.VideoAllCallBack
+import com.shuyu.gsyvideoplayer.player.PlayerFactory
+import com.shuyu.gsyvideoplayer.video.StandardGSYVideoPlayer
+import tv.danmaku.ijk.media.exo2.Exo2PlayerManager
 import com.zongyi.box.R
 import com.zongyi.box.data.BrowserHeaders
 import com.zongyi.box.data.Episode
@@ -41,20 +32,22 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 
 /**
- * 原生播放器（Media3/ExoPlayer + HLS）。
- * 功能：m3u8 流解析播放、清晰度切换、多线路切换、选集/上下集、
- * 手势（亮度/音量/快进快退/双击暂停）、倍速、断点续播、历史记录。
+ * 播放器（GSYVideoPlayer 14.0 + Media3/Exo 内核）。
+ *
+ * GSY 提供的成熟播放 UI：亮度/音量/快进手势、双击暂停、进度条、
+ * 缓冲提示、播放暂停、静音、错误重试界面。
+ * 本类保留全部自有功能：断点续播、倍速、上下集、线路切换、选集、
+ * 观看历史、播放错误自动重试、浏览器伪装请求头、播放不息屏。
  */
 class PlayerActivity : AppCompatActivity() {
 
     private lateinit var b: ActivityPlayerBinding
-    private var player: ExoPlayer? = null
-    private var trackSelector: DefaultTrackSelector? = null
 
     private var vodId = -1
     private var sid = -1
     private var nid = -1
     private var title = ""
+    private var srcKey = com.zongyi.box.data.Src.JUZI.key
     private var detail: VodDetail? = null
     private var resumed = false
 
@@ -67,95 +60,119 @@ class PlayerActivity : AppCompatActivity() {
     private var retryPending = false
     private val MAX_RETRY = 3
 
+    // 历史进度轮询
+    private var pollTask: Runnable? = null
+
+    @SuppressLint("SourceLockedOrientationActivity")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         b = ActivityPlayerBinding.inflate(layoutInflater)
         setContentView(b.root)
 
+        // GSY 内核切换为 Media3/Exo（HLS 解码、清晰度自适应、断点续播能力最强）
+        PlayerFactory.setPlayManager(Exo2PlayerManager::class.java)
+
+        // 页面本身已是全屏横屏，隐藏 GSY 自带全屏按钮，
+        // 避免触发 startWindowFullscreen 跳转未配置的 GSYFullActivity 而崩溃
+        b.player.getFullscreenButton().visibility = View.GONE
+        // 关闭"当前为移动网络"提示弹窗，避免播放被弹窗打断
+        b.player.setNeedShowWifiTip(false)
+
         vodId = intent.getIntExtra("id", -1)
         sid = intent.getIntExtra("sid", -1)
-        nid = intent.getIntExtra("nid", 1)
+        nid = intent.getIntExtra("nid", -1)
         title = intent.getStringExtra("title").orEmpty()
+        srcKey = intent.getStringExtra("src") ?: com.zongyi.box.data.Src.JUZI.key
         b.tvTitle.text = title
 
-        b.btnBack.setOnClickListener { finish() }
-        b.btnEpisodes.setOnClickListener { showEpisodeSheet() }
-        b.btnLine.setOnClickListener { showLineSheet() }
-        b.btnQuality.setOnClickListener { showQualityDialog() }
-        b.btnSpeed.setOnClickListener { showSpeedDialog() }
-        b.btnPrev.setOnClickListener { gotoEpisode(-1) }
-        b.btnNext.setOnClickListener { gotoEpisode(1) }
-        b.tvError.setOnClickListener { play() }
-
-        buildPlayer()
-        setupGestures()
+        setupTopBar()
+        setupPlayerCallbacks()
         play()
     }
 
-    private fun buildPlayer() {
-        val ts = DefaultTrackSelector(this)
-        trackSelector = ts
-        // 视频流（m3u8/ts 分片）请求带上浏览器头，与页面请求保持一致的伪装
-        val dsFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent(BrowserHeaders.USER_AGENT)
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(20_000)
-            .setAllowCrossProtocolRedirects(true)
-            .setDefaultRequestProperties(BrowserHeaders.media().toMutableMap())
-        val mediaSourceFactory = DefaultMediaSourceFactory(this).setDataSourceFactory(dsFactory)
-        player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(mediaSourceFactory)
-            .setTrackSelector(ts)
-            .setLoadControl(
-                DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(30_000, 90_000, 1_500, 5_000)
-                    .build()
-            )
-            .build()
-        b.playerView.player = player
-        b.playerView.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { vis ->
-            b.topBar.visibility = if (vis == View.VISIBLE) View.VISIBLE else View.INVISIBLE
-        })
-        player!!.addListener(object : Player.Listener {
-            override fun onPlayerError(error: PlaybackException) {
-                saveHistory()
-                // 网络波动自动重试（递增间隔 1.5s/3s/4.5s），重试期间不叠加
-                if (retryPending) return
-                if (retryCount < MAX_RETRY) {
-                    retryPending = true
-                    retryCount++
-                    showTip("网络波动，自动重试 $retryCount/$MAX_RETRY…")
-                    uiHandler.postDelayed({
-                        retryPending = false
-                        val p = player ?: return@postDelayed
-                        if (isFinishing || isDestroyed) return@postDelayed
-                        p.prepare()
-                        p.play()
-                    }, retryCount * 1500L)
-                } else {
-                    b.tvError.isVisible = true
-                    b.tvError.text = "播放失败，已自动重试 $MAX_RETRY 次\n点击重试，或切换其他线路"
-                }
-            }
-
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                if (isPlaying) {
-                    // 恢复播放即视为成功，重置重试计数并隐藏错误提示
-                    retryCount = 0
-                    retryPending = false
-                    b.tvError.isVisible = false
-                }
-                if (!isPlaying) saveHistory()
-            }
-        })
-        // 错误提示可点击：手动重试（重新走完整取流流程）
+    private fun setupTopBar() {
+        b.btnBack.setOnClickListener { finish() }
+        b.btnSpeed.setOnClickListener { showSpeedDialog() }
+        b.btnPrev.setOnClickListener { gotoEpisode(-1) }
+        b.btnNext.setOnClickListener { gotoEpisode(1) }
+        b.btnLine.setOnClickListener { showLineSheet() }
+        b.btnEpisodes.setOnClickListener { showEpisodeSheet() }
+        b.btnQuality.setOnClickListener {
+            Toast.makeText(this, "当前 HLS 流为自适应码率，清晰度自动匹配", Toast.LENGTH_SHORT).show()
+        }
         b.tvError.setOnClickListener {
             b.tvError.isVisible = false
             retryCount = 0
             retryPending = false
             play()
         }
+        // 顶栏倍速按钮常显当前倍速
+        b.btnSpeed.text = "倍速 ${speeds[speedIndex]}x"
     }
+
+    /** GSY 播放回调：错误自动重试 */
+    private fun setupPlayerCallbacks() {
+        b.player.setVideoAllCallBack(object : VideoAllCallBack {
+            override fun onStartPrepared(s: String?, vararg objects: Any?) {}
+            override fun onPrepared(s: String?, vararg objects: Any?) {
+                retryCount = 0
+                retryPending = false
+            }
+
+            override fun onClickStartIcon(s: String?, vararg objects: Any?) {}
+            override fun onClickStartError(s: String?, vararg objects: Any?) {}
+            override fun onClickStop(s: String?, vararg objects: Any?) {}
+            override fun onClickStopFullscreen(s: String?, vararg objects: Any?) {}
+            override fun onClickResume(s: String?, vararg objects: Any?) {}
+            override fun onClickResumeFullscreen(s: String?, vararg objects: Any?) {}
+            override fun onClickSeekbar(s: String?, vararg objects: Any?) {}
+            override fun onClickSeekbarFullscreen(s: String?, vararg objects: Any?) {}
+            override fun onAutoComplete(s: String?, vararg objects: Any?) {}
+            override fun onComplete(s: String?, vararg objects: Any?) {
+                saveHistory()
+                // 追更场景：本集播完自动连播下一集
+                uiHandler.post {
+                    if (isFinishing || isDestroyed) return@post
+                    gotoEpisode(1, silent = true)
+                }
+            }
+
+            override fun onEnterFullscreen(s: String?, vararg objects: Any?) {}
+            override fun onQuitFullscreen(s: String?, vararg objects: Any?) {}
+            override fun onQuitSmallWidget(s: String?, vararg objects: Any?) {}
+            override fun onEnterSmallWidget(s: String?, vararg objects: Any?) {}
+            override fun onTouchScreenSeekVolume(s: String?, vararg objects: Any?) {}
+            override fun onTouchScreenSeekPosition(s: String?, vararg objects: Any?) {}
+            override fun onTouchScreenSeekLight(s: String?, vararg objects: Any?) {}
+            override fun onPlayError(s: String?, vararg objects: Any?) {
+                autoRetry()
+            }
+
+            override fun onClickStartThumb(s: String?, vararg objects: Any?) {}
+            override fun onClickBlank(s: String?, vararg objects: Any?) {}
+            override fun onClickBlankFullscreen(s: String?, vararg objects: Any?) {}
+        })
+    }
+
+    /** 播放错误：自动重试（递增间隔 1.5s/3s/4.5s），失败 3 次后提示手动操作 */
+    private fun autoRetry() {
+        if (retryPending) return
+        if (retryCount < MAX_RETRY) {
+            retryPending = true
+            retryCount++
+            Toast.makeText(this, "网络波动，自动重试 $retryCount/$MAX_RETRY…", Toast.LENGTH_SHORT).show()
+            uiHandler.postDelayed({
+                retryPending = false
+                if (isFinishing || isDestroyed) return@postDelayed
+                b.player.setSeekOnStart(b.player.currentPositionWhenPlaying)
+                b.player.startPlayLogic()
+            }, retryCount * 1500L)
+        } else {
+            Toast.makeText(this, "播放失败，已自动重试 $MAX_RETRY 次\n可点击重试或切换线路", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // ---------- 取流与播放 ----------
 
     private fun play() {
         b.tvError.isVisible = false
@@ -163,11 +180,18 @@ class PlayerActivity : AppCompatActivity() {
         retryPending = false
         lifecycleScope.launch {
             runSuspendCatching {
-                val d = async { detail ?: SiteApi.detail(vodId).also { detail = it } }
-                val stream = async { SiteApi.stream(vodId, sid, nid) }
+                val d = async { detail ?: SiteApi.detail(com.zongyi.box.data.Src.of(srcKey), vodId).also { detail = it } }
+                val stream = async { SiteApi.stream(com.zongyi.box.data.Src.of(srcKey), vodId, sid, nid) }
                 d.await() to stream.await()
             }.onSuccess { (d, stream) ->
-                startStream(stream.url, stream.from)
+                // 播放前预取并过滤 m3u8 中的广告分片（博彩等），失败时自动回落原始地址
+                val prepared = runSuspendCatching { SiteApi.prepareStream(stream.url, cacheDir) }
+                    .getOrDefault(com.zongyi.box.data.PreparedStream(stream.url, 0))
+                if (prepared.removedAdSegments > 0) {
+                    android.util.Log.i("ZongYiBox", "已过滤 ${prepared.removedAdSegments} 个广告分片")
+                    Toast.makeText(this@PlayerActivity, "已自动过滤 ${prepared.removedAdSegments} 段广告", Toast.LENGTH_SHORT).show()
+                }
+                startStream(prepared.url, stream.from)
             }.onFailure { e ->
                 if (e is CancellationException) return@onFailure
                 b.tvError.isVisible = true
@@ -176,124 +200,56 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
+    @SuppressLint("SetTextI18n")
     private fun startStream(url: String, from: String) {
-        val p = player ?: return
-        b.playerView.showController()
-        val item = MediaItem.Builder()
-            .setUri(url)
-            .setMimeType(MimeTypes.APPLICATION_M3U8)
-            .build()
-        p.setMediaItem(item, resumePos())
-        p.setPlaybackParameters(PlaybackParameters(speeds[speedIndex]))
-        p.prepare()
-        p.play()
+        val p: StandardGSYVideoPlayer = b.player
+        // 请求头伪装成浏览器；站点 m3u8 无 Referer 校验，直接播放
+        p.setUp(url, false, null as java.io.File?, BrowserHeaders.media(), title)
+        // 断点续播：首次进入时定位到上次观看位置
+        p.setSeekOnStart(if (!resumed) resumePos() else 0)
+        p.setSpeed(speeds[speedIndex])
+        p.startPlayLogic()
         resumed = true
         saveHistory()
+        startProgressPolling()
     }
 
+    /** 上次观看位置（毫秒，同来源同线路同集） */
     private fun resumePos(): Long {
-        if (resumed) return C.TIME_UNSET
-        val pos = Store.resumeOf(this, vodId, sid, nid)
-        return if (pos > 30_000) pos else C.TIME_UNSET
-    }
-
-    // ---------- 手势 ----------
-
-    @SuppressLint("ClickableViewAccessibility")
-    private fun setupGestures() {
-        val audio = getSystemService(AUDIO_SERVICE) as AudioManager
-        var brightnessBase = -1f
-        var volumeBase = 0
-        var seekBase = 0L
-        var gestureMode = 0 // 0=未知 1=亮度 2=音量 3=快进
-        val gd = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onDown(e: MotionEvent): Boolean {
-                gestureMode = 0
-                brightnessBase = window.attributes.screenBrightness.takeIf { it >= 0 } ?: 0.5f
-                volumeBase = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
-                seekBase = player?.currentPosition ?: 0L
-                return true
-            }
-
-            override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
-                val p = player ?: return true
-                val totalX = e2.x - (e1?.x ?: e2.x)
-                val totalY = e2.y - (e1?.y ?: e2.y)
-                if (gestureMode == 0) {
-                    gestureMode = when {
-                        kotlin.math.abs(totalX) > kotlin.math.abs(totalY) -> 3
-                        (e1?.x ?: 0f) < b.root.width / 2 -> 1
-                        else -> 2
-                    }
-                }
-                when (gestureMode) {
-                    1 -> { // 左半屏上下滑 = 亮度
-                        val delta = -totalY / b.root.height * 1.2f
-                        val v = (brightnessBase + delta).coerceIn(0.01f, 1f)
-                        window.attributes = window.attributes.apply { screenBrightness = v }
-                        showTip("亮度 ${"%.0f".format(v * 100)}%")
-                    }
-                    2 -> { // 右半屏上下滑 = 音量
-                        val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                        val delta = (-totalY / b.root.height * max * 1.5f).toInt()
-                        val v = (volumeBase + delta).coerceIn(0, max)
-                        if (v != volumeBase) audio.setStreamVolume(AudioManager.STREAM_MUSIC, v, 0)
-                        showTip("音量 ${v * 100 / max}%")
-                    }
-                    3 -> { // 水平滑 = 快进快退
-                        val dur = p.duration.takeIf { it > 0 } ?: return true
-                        val step = (totalX * (dur / b.root.width) * 1.5).toLong()
-                        val target = (seekBase + step).coerceIn(0, dur)
-                        p.seekTo(target)
-                        showTip("${fmtMs(target)} / ${fmtMs(dur)}")
-                    }
-                }
-                return true
-            }
-
-            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                if (b.topBar.visibility == View.VISIBLE) b.playerView.hideController()
-                else b.playerView.showController()
-                return true
-            }
-
-            override fun onDoubleTap(e: MotionEvent): Boolean {
-                val p = player ?: return true
-                if (p.isPlaying) p.pause() else p.play()
-                showTip(if (p.isPlaying) "播放" else "暂停")
-                return true
-            }
-        })
-        b.gestureLayer.setOnTouchListener { v, e ->
-            gd.onTouchEvent(e)
-            true
+        val h = Store.history(this).firstOrNull {
+            it.vodId == vodId && it.srcKey == srcKey && it.sid == sid && it.nid == nid
         }
+        // 接近片尾的不续播
+        return if (h != null && h.durationMs > 0 && h.positionMs < h.durationMs - 15_000) h.positionMs else 0
     }
 
-    private val tipRunnable = Runnable {
-        if (!isFinishing && !isDestroyed) b.gestureTip.isVisible = false
+    /** 每 3 秒落盘观看进度 */
+    private fun startProgressPolling() {
+        pollTask?.let { uiHandler.removeCallbacks(it) }
+        val task = object : Runnable {
+            override fun run() {
+                if (isFinishing || isDestroyed) return
+                saveHistory()
+                uiHandler.postDelayed(this, 3_000)
+            }
+        }
+        pollTask = task
+        uiHandler.postDelayed(task, 3_000)
     }
 
-    private fun showTip(text: String) {
-        b.gestureTip.text = text
-        b.gestureTip.isVisible = true
-        uiHandler.removeCallbacks(tipRunnable)
-        uiHandler.postDelayed(tipRunnable, 800)
-    }
-
-    private fun fmtMs(ms: Long): String {
-        val s = ms / 1000
-        return "%d:%02d:%02d".format(s / 3600, (s % 3600) / 60, s % 60)
+    private fun stopProgressPolling() {
+        pollTask?.let { uiHandler.removeCallbacks(it) }
+        pollTask = null
     }
 
     // ---------- 历史 ----------
 
     private fun saveHistory() {
-        val p = player ?: return
+        val p = b.player
         val d = detail
         val epName = d?.source(sid)?.episodes?.firstOrNull { it.nid == nid }?.name
             ?: intent.getStringExtra("episodeName").orEmpty()
-        if (p.currentPosition > 5_000) {
+        if (p.currentPositionWhenPlaying > 5_000) {
             Store.saveHistory(
                 this,
                 HistoryEntry(
@@ -302,9 +258,10 @@ class PlayerActivity : AppCompatActivity() {
                     cover = d?.cover ?: intent.getStringExtra("cover").orEmpty(),
                     sid = sid, nid = nid,
                     episodeName = epName,
-                    positionMs = p.currentPosition,
+                    positionMs = p.currentPositionWhenPlaying,
                     durationMs = p.duration.takeIf { it > 0 } ?: 0L,
-                    updatedAt = System.currentTimeMillis()
+                    updatedAt = System.currentTimeMillis(),
+                    src = srcKey
                 )
             )
         }
@@ -319,13 +276,14 @@ class PlayerActivity : AppCompatActivity() {
         resumed = false
         play()
         saveHistory()
+        Toast.makeText(this, "正在播放：${ep.name}", Toast.LENGTH_SHORT).show()
     }
 
-    private fun gotoEpisode(offset: Int) {
+    private fun gotoEpisode(offset: Int, silent: Boolean = false) {
         val src = currentSource() ?: return
         val idx = src.episodes.indexOfFirst { it.nid == nid }
         val target = src.episodes.getOrNull(idx + offset) ?: run {
-            showTip(if (offset > 0) "已经是最后一集" else "已经是第一集")
+            if (!silent) Toast.makeText(this, if (offset > 0) "已经是最后一集" else "已经是第一集", Toast.LENGTH_SHORT).show()
             return
         }
         switchTo(target)
@@ -348,11 +306,11 @@ class PlayerActivity : AppCompatActivity() {
             }
             group.addView(chip)
         }
-        dialog.setContentView(wrapSheet(group))
+        dialog.setContentView(wrapSheet(group, "选集 · 共 ${src.episodes.size} 集"))
         dialog.show()
     }
 
-    // ---------- 线路 / 画质 / 倍速 ----------
+    // ---------- 线路 / 倍速 ----------
 
     private fun showLineSheet() {
         val d = detail ?: return
@@ -375,43 +333,51 @@ class PlayerActivity : AppCompatActivity() {
             }
             group.addView(chip)
         }
-        dialog.setContentView(wrapSheet(group))
+        val current = d.sources.firstOrNull { it.sid == sid }
+        dialog.setContentView(wrapSheet(group, "切换线路 · 当前 ${current?.name ?: "未知"}"))
         dialog.show()
-    }
-
-    private fun showQualityDialog() {
-        val p = player ?: return
-        TrackSelectionDialogBuilder(this, "画质选择", p, C.TRACK_TYPE_VIDEO)
-            .setTheme(R.style.Theme_ZongYiBox)
-            .build()
-            .show()
     }
 
     private fun showSpeedDialog() {
         val items = speeds.map { if (it == 1.0f) "1.0x 常速" else "${it}x" }.toTypedArray()
-        androidx.appcompat.app.AlertDialog.Builder(this, R.style.Theme_ZongYiBox)
+        AlertDialog.Builder(this, R.style.Theme_ZongYiBox)
             .setTitle("倍速播放")
             .setSingleChoiceItems(items, speedIndex) { dlg, which ->
                 speedIndex = which
-                player?.setPlaybackParameters(PlaybackParameters(speeds[which]))
+                b.player.setSpeed(speeds[which])
+                b.btnSpeed.text = "倍速 ${speeds[which]}x"
+                Toast.makeText(this, "已切换为 ${speeds[which]}x", Toast.LENGTH_SHORT).show()
                 dlg.dismiss()
             }
             .show()
     }
 
-    private fun wrapSheet(view: View): View {
-        return androidx.core.widget.NestedScrollView(this).apply {
+    private fun wrapSheet(view: View, title: String): View {
+        val container = androidx.core.widget.NestedScrollView(this).apply {
             layoutParams = android.view.ViewGroup.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT
             )
-            addView(view, android.view.ViewGroup.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            ))
             setBackgroundColor(getColor(R.color.surface))
-            setPadding(48, 56, 48, 56)
+            setPadding(48, 40, 48, 56)
         }
+        // 标题行（当前集/当前线路），增强底部弹窗的上下文感
+        val titleView = android.widget.TextView(this).apply {
+            text = title
+            setTextColor(getColor(R.color.text_secondary))
+            textSize = 14f
+            setPadding(4, 0, 4, 16)
+        }
+        val box = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            addView(titleView)
+            addView(view)
+        }
+        container.addView(box, android.view.ViewGroup.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+        return container
     }
 
     // ---------- 生命周期 ----------
@@ -419,7 +385,12 @@ class PlayerActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         saveHistory()
-        player?.pause()
+        GSYVideoManager.onPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        GSYVideoManager.onResume()
     }
 
     override fun onStop() {
@@ -428,9 +399,8 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        b.playerView.player = null
-        player?.release()
-        player = null
+        stopProgressPolling()
+        GSYVideoManager.releaseAllVideos()
         super.onDestroy()
     }
 }

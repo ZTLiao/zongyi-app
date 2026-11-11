@@ -4,6 +4,7 @@ import android.app.Application
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import com.zongyi.box.data.BrowserHeaders
+import com.zongyi.box.data.DomainStore
 import com.zongyi.box.data.HttpCache
 import com.zongyi.box.data.Parser
 import okhttp3.OkHttpClient
@@ -13,18 +14,24 @@ class App : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         HttpCache.init(this)
+        DomainStore.init(this)
     }
 
     /**
      * 封面图等图片请求统一走 Coil 全局 ImageLoader，
      * 拦截器为每个请求注入浏览器头（UA/Referer/Accept-Language），
      * 与 SiteApi、播放器的伪装策略保持一致。
+     * 555影视等站点的图片要求 no-referrer（页面 referrerpolicy="no-referrer"），
+     * 非综艺盒子域名的图片不带 Referer，避免防盗链拦截。
      */
     override fun newImageLoader(): ImageLoader {
         val client = OkHttpClient.Builder()
             .addInterceptor { chain ->
-                val builder = chain.request().newBuilder()
-                BrowserHeaders.media().forEach { (name, value) -> builder.header(name, value) }
+                val req = chain.request()
+                val builder = req.newBuilder()
+                val headers = if (req.url.host.contains("ijujizy")) BrowserHeaders.media()
+                else BrowserHeaders.mediaNoRef
+                headers.forEach { (name, value) -> builder.header(name, value) }
                 chain.proceed(builder.build())
             }
             .build()

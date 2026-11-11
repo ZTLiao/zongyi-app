@@ -25,6 +25,7 @@ import com.zongyi.box.data.VodItem
 import com.zongyi.box.data.runSuspendCatching
 import com.zongyi.box.databinding.ActivityDetailBinding
 import com.zongyi.box.databinding.ItemEpisodeBinding
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class DetailActivity : AppCompatActivity() {
@@ -33,6 +34,7 @@ class DetailActivity : AppCompatActivity() {
     private var detail: VodDetail? = null
     private var currentSid = -1
     private var vodId = -1
+    private var srcKey = com.zongyi.box.data.Src.JUZI.key
     private var prefillTitle = ""
     private var prefillCover = ""
 
@@ -42,6 +44,7 @@ class DetailActivity : AppCompatActivity() {
         setContentView(b.root)
 
         vodId = intent.getIntExtra("id", -1)
+        srcKey = intent.getStringExtra("src") ?: com.zongyi.box.data.Src.JUZI.key
         prefillTitle = intent.getStringExtra("title").orEmpty()
         prefillCover = intent.getStringExtra("cover").orEmpty()
 
@@ -53,8 +56,8 @@ class DetailActivity : AppCompatActivity() {
         b.btnPlay.setOnClickListener {
             val d = detail ?: return@setOnClickListener
             val src = d.source(currentSid) ?: d.firstAvailable() ?: return@setOnClickListener
-            // 优先跳最近看的那一集
-            val resume = Store.history(this).firstOrNull { it.vodId == vodId }
+            // 优先跳最近看的那一集（同来源）
+            val resume = Store.history(this).firstOrNull { it.vodId == vodId && it.srcKey == srcKey }
             val target = if (resume != null && resume.sid == src.sid)
                 src.episodes.firstOrNull { it.nid == resume.nid } ?: src.episodes.firstOrNull()
             else src.episodes.firstOrNull()
@@ -62,8 +65,8 @@ class DetailActivity : AppCompatActivity() {
         }
         b.btnFav.setOnClickListener {
             val d = detail
-            val item = if (d != null) VodItem(d.id, d.title, d.cover, d.status, d.actors)
-            else VodItem(vodId, prefillTitle, prefillCover, "", "")
+            val item = if (d != null) VodItem(d.id, d.title, d.cover, d.status, d.actors, srcKey)
+            else VodItem(vodId, prefillTitle, prefillCover, "", "", srcKey)
             val fav = Store.toggleFav(this, item)
             renderFav(fav)
         }
@@ -74,7 +77,19 @@ class DetailActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         // 从播放器/其他页面返回时刷新分集列表，选中态（上次观看集数）跟随最新历史
-        if (detail != null) renderEpisodes()
+        if (detail != null) {
+            renderEpisodes()
+            updateResumeButton()
+        }
+    }
+
+    /** 播放按钮文案：有观看记录时显示"续播 第X集"（同来源） */
+    private fun updateResumeButton() {
+        val d = detail ?: return
+        val last = Store.history(this).firstOrNull { it.vodId == d.id && it.srcKey == srcKey }
+        val src = last?.let { d.source(it.sid) } ?: d.firstAvailable()
+        val ep = src?.episodes?.firstOrNull { it.nid == last?.nid }
+        b.btnPlay.text = if (ep != null) "续播 ${ep.name}" else "立即播放"
     }
 
     private fun renderFav(fav: Boolean) {
@@ -85,17 +100,18 @@ class DetailActivity : AppCompatActivity() {
         b.progress.isVisible = true
         b.tvError.isVisible = false
         lifecycleScope.launch {
-            runSuspendCatching { SiteApi.detail(vodId) }
+            runSuspendCatching { SiteApi.detail(com.zongyi.box.data.Src.of(srcKey), vodId) }
                 .onSuccess { d ->
                     detail = d
                     render(d)
                     b.progress.isVisible = false
                 }
                 .onFailure { e ->
+                    if (e is CancellationException) return@onFailure
                     b.progress.isVisible = false
                     b.tvError.isVisible = true
-                    b.tvError.text = "加载失败：${e.message}\n点击返回"
-                    b.tvError.setOnClickListener { finish() }
+                    b.tvError.text = "加载失败：${e.message}\n点击重试"
+                    b.tvError.setOnClickListener { load() }
                 }
         }
     }
@@ -110,7 +126,7 @@ class DetailActivity : AppCompatActivity() {
         b.tvIntro.text = d.intro.ifBlank { "暂无简介" }
         renderFav(Store.isFav(this, d.id))
 
-        // 线路 chips
+        // 线路 chips（555 站线路很多时展示前 12 条）
         val group: ChipGroup = b.chipsSource
         group.removeAllViews()
         d.sources.forEach { src ->
@@ -124,8 +140,8 @@ class DetailActivity : AppCompatActivity() {
             group.addView(chip)
         }
 
-        // 默认选中：历史线路 > 第一个非空线路
-        val last = Store.history(this).firstOrNull { it.vodId == d.id }
+        // 默认选中：历史线路 > 第一个非空线路（同来源）
+        val last = Store.history(this).firstOrNull { it.vodId == d.id && it.srcKey == srcKey }
         currentSid = when {
             last != null && d.source(last.sid)?.episodes?.isNotEmpty() == true -> last.sid
             else -> d.firstAvailable()?.sid ?: -1
@@ -133,6 +149,7 @@ class DetailActivity : AppCompatActivity() {
         group.children.forEachIndexed { idx, chip ->
             if ((d.sources.getOrNull(idx)?.sid ?: -1) == currentSid) (chip as Chip).isChecked = true
         }
+        updateResumeButton()
         renderEpisodes()
     }
 
@@ -144,8 +161,8 @@ class DetailActivity : AppCompatActivity() {
     private fun renderEpisodes() {
         val d = detail ?: return
         val src = d.source(currentSid) ?: d.firstAvailable() ?: return
-        // 上次观看的集数（当前线路）→ 列表中选中高亮
-        val last = Store.history(this).firstOrNull { it.vodId == d.id && it.sid == src.sid }
+        // 上次观看的集数（当前线路）→ 列表中选中高亮（同来源）
+        val last = Store.history(this).firstOrNull { it.vodId == d.id && it.srcKey == srcKey && it.sid == src.sid }
         val adapter = EpisodeAdapter(src.episodes, last?.nid ?: -1) { ep -> openPlayer(src.sid, ep) }
         b.rvEpisodes.layoutManager = GridLayoutManager(this, 4)
         b.rvEpisodes.adapter = adapter
@@ -164,6 +181,7 @@ class DetailActivity : AppCompatActivity() {
             putExtra("title", d.title)
             putExtra("cover", d.cover)
             putExtra("episodeName", ep.name)
+            putExtra("src", srcKey)
         })
     }
 }

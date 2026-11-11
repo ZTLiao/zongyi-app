@@ -8,7 +8,8 @@ data class VodItem(
     val title: String,
     val cover: String,
     val remark: String,      // 如「更新至20261110期」「已完结」
-    val actors: String = ""
+    val actors: String = "",
+    val src: String = Src.JUZI.key   // 来源站标识，兼容旧数据默认综艺盒子
 )
 
 /** 首页版块 */
@@ -94,8 +95,11 @@ data class HistoryEntry(
     val episodeName: String,
     val positionMs: Long,
     val durationMs: Long,
-    val updatedAt: Long
-)
+    val updatedAt: Long,
+    val src: String? = null   // 来源站标识；旧数据为 null，视为综艺盒子
+) {
+    val srcKey: String get() = src ?: Src.JUZI.key
+}
 
 /** 收藏 */
 data class FavEntry(

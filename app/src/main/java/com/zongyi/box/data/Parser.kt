@@ -11,7 +11,8 @@ import java.util.Base64
  */
 object Parser {
 
-    const val BASE = "https://m.ijujizy.com"
+    /** 综艺盒子当前生效域名（跟随 Src.JUZI，故障切换时自动变化） */
+    val BASE: String get() = Src.JUZI.base
     private val UA =
         "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
@@ -172,8 +173,9 @@ object Parser {
         val pd = parsePlayerData(html) ?: return null
         val url = decodeStreamUrl(pd.url, pd.encrypt)
         if (url.isBlank() || !url.startsWith("http")) return null
+        // 两站播放链接分别形如 /vrplay/ 与 /vodplay/
         fun nidOf(link: String): Int? =
-            Regex("/vrplay/\\d+-\\d+-(\\d+)\\.html").find(link)?.groupValues?.get(1)?.toIntOrNull()
+            Regex("/(?:vr|vod)play/\\d+-\\d+-(\\d+)\\.html").find(link)?.groupValues?.get(1)?.toIntOrNull()
         return StreamInfo(
             url = url,
             from = pd.from,

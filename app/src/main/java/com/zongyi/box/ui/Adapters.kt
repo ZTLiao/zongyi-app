@@ -82,6 +82,7 @@ object Nav {
             putExtra("title", item.title)
             putExtra("cover", item.cover)
             putExtra("remark", item.remark)
+            putExtra("src", item.src)
         })
     }
 }

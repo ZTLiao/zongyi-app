@@ -8,7 +8,7 @@
 
 - **语言**：Kotlin 2.0 / AGP 8.7.3 / Gradle 8.14.2
 - **UI**：View 体系 + ViewBinding（Material 3 风格暗色主题）
-- **播放**：Media3 (ExoPlayer) + HLS，原生解码渲染
+- **播放**：GSYVideoPlayer 14.0（Media3/Exo 内核），原生 HLS 解码渲染
 - **网络/解析**：OkHttp + Jsoup（HTML 结构化解析，不执行站点脚本）
 - **存储**：Gson + 文件（历史/收藏，轻量零依赖）
 

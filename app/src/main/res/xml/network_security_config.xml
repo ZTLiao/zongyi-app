@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  网络安全配置：系统信任锚 + 附加 Sectigo R46 根证书。
+  背景：555影视（5k35.top）的 ZeroSSL 证书链锚定在
+  "Sectigo Public Server Authentication Root R46"（2021 年新增的根），
+  部分 Android 系统证书库尚未收录该根，导致
+  CertPathValidatorException: Trust anchor for certification path not found。
+  打包该根证书后完整链可验证（leaf ← ZeroSSL RSA DV SSL CA 2 ← R46）。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/sectigo_r46" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

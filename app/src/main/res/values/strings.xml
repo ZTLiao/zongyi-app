@@ -5,7 +5,7 @@
     <string name="tab_category">分类</string>
     <string name="tab_search">搜索</string>
     <string name="tab_mine">我的</string>
-    <string name="hint_search">搜索综艺名称…</string>
+    <string name="hint_search">搜索电影 / 剧集 / 综艺…</string>
     <string name="loading">加载中…</string>
     <string name="load_failed">加载失败，点击重试</string>
     <string name="empty">暂无内容</string>

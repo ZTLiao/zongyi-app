@@ -49,4 +49,14 @@ object BrowserHeaders {
         "Sec-Fetch-Site" to "cross-site",
         "Referer" to referer,
     )
+
+    /** 媒体请求头（无 Referer）：555影视等站点图片要求 no-referrer，带 Referer 反而被防盗链拦截 */
+    val mediaNoRef: Map<String, String> = mapOf(
+        "User-Agent" to USER_AGENT,
+        "Accept" to "*/*",
+        "Accept-Language" to "zh-CN,zh;q=0.9,en;q=0.8",
+        "Sec-Fetch-Dest" to "empty",
+        "Sec-Fetch-Mode" to "cors",
+        "Sec-Fetch-Site" to "cross-site",
+    )
 }

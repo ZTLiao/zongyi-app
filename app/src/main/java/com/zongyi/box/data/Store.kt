@@ -12,7 +12,9 @@ object Store {
     private val gson = Gson()
     private const val FILE_HISTORY = "history.json"
     private const val FILE_FAV = "fav.json"
+    private const val FILE_SEARCH_HISTORY = "search_history.json"
     private const val MAX_HISTORY = 100
+    private const val MAX_SEARCH_HISTORY = 10
 
     // ---------- 观看历史 ----------
 
@@ -27,17 +29,18 @@ object Store {
         writeList(ctx, FILE_HISTORY, list)
     }
 
-    /** 查询某影片的续播位置（同一线路同一集才有效） */
-    fun resumeOf(ctx: Context, vodId: Int, sid: Int, nid: Int): Long {
-        return history(ctx).firstOrNull { it.vodId == vodId && it.sid == sid && it.nid == nid }
-            ?.positionMs ?: 0L
+    /** 查询某影片的续播位置（同来源同线路同一集才有效） */
+    fun resumeOf(ctx: Context, srcKey: String, vodId: Int, sid: Int, nid: Int): Long {
+        return history(ctx).firstOrNull {
+            it.vodId == vodId && it.srcKey == srcKey && it.sid == sid && it.nid == nid
+        }?.positionMs ?: 0L
     }
 
     fun clearHistory(ctx: Context) = writeList(ctx, FILE_HISTORY, emptyList<HistoryEntry>())
 
-    fun removeHistory(ctx: Context, vodId: Int) {
+    fun removeHistory(ctx: Context, vodId: Int, srcKey: String = Src.JUZI.key) {
         val list = history(ctx)
-        list.removeAll { it.vodId == vodId }
+        list.removeAll { it.vodId == vodId && it.srcKey == srcKey }
         writeList(ctx, FILE_HISTORY, list)
     }
 
@@ -56,6 +59,30 @@ object Store {
         writeList(ctx, FILE_FAV, list)
         return !existed
     }
+
+    // ---------- 搜索历史 ----------
+
+    /** 搜索历史（最新在前，最多 10 条） */
+    fun searchHistory(ctx: Context): MutableList<String> = readList(ctx, FILE_SEARCH_HISTORY)
+
+    /** 记录一次搜索：去重、置顶、超限裁剪 */
+    fun addSearchHistory(ctx: Context, kw: String) {
+        val k = kw.trim()
+        if (k.isEmpty()) return
+        val list = searchHistory(ctx)
+        list.removeAll { it == k }
+        list.add(0, k)
+        while (list.size > MAX_SEARCH_HISTORY) list.removeAt(list.size - 1)
+        writeList(ctx, FILE_SEARCH_HISTORY, list)
+    }
+
+    fun removeSearchHistory(ctx: Context, kw: String) {
+        val list = searchHistory(ctx)
+        list.removeAll { it == kw }
+        writeList(ctx, FILE_SEARCH_HISTORY, list)
+    }
+
+    fun clearSearchHistory(ctx: Context) = writeList(ctx, FILE_SEARCH_HISTORY, emptyList<String>())
 
     // ---------- IO ----------
 

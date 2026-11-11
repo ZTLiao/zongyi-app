@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.zongyi.box"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.zongyi.box"
@@ -41,6 +41,10 @@ android {
     buildFeatures {
         viewBinding = true
     }
+    testOptions {
+        // 单测运行在 JVM，android.util.Log 等框架方法返回默认值而非抛异常
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -58,11 +62,9 @@ dependencies {
     implementation("org.jsoup:jsoup:1.18.3")
     implementation("com.google.code.gson:gson:2.11.0")
 
-    // 播放器
-    implementation("androidx.media3:media3-exoplayer:1.4.1")
-    implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
-    implementation("androidx.media3:media3-ui:1.4.1")
-    implementation("androidx.media3:media3-session:1.4.1")
+    // 播放器：GSYVideoPlayer（GitHub 最活跃的开源播放器库），内核为 Media3/ExoPlayer
+    implementation("io.github.carguo:gsyvideoplayer-java:14.0.0")
+    implementation("io.github.carguo:gsyvideoplayer-exo2:14.0.0")
 
     // 图片
     implementation("io.coil-kt:coil:2.7.0")
@@ -72,4 +74,5 @@ dependencies {
 
     // 单元测试
     testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }

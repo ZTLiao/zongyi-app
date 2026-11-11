@@ -4,16 +4,16 @@
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:paddingEnd="10dp">
+    android:paddingEnd="12dp">
 
     <FrameLayout
-        android:layout_width="108dp"
+        android:layout_width="112dp"
         android:layout_height="wrap_content">
 
         <com.google.android.material.imageview.ShapeableImageView
             android:id="@+id/imgCover"
-            android:layout_width="108dp"
-            android:layout_height="150dp"
+            android:layout_width="112dp"
+            android:layout_height="156dp"
             android:scaleType="centerCrop"
             app:shapeAppearanceOverlay="@style/PosterCorner"
             app:srcCompat="@color/surface2" />
@@ -27,7 +27,7 @@
             android:background="@drawable/bg_badge"
             android:maxLines="1"
             android:ellipsize="end"
-            android:paddingHorizontal="5dp"
+            android:paddingHorizontal="6dp"
             android:paddingVertical="2dp"
             android:textColor="@color/text_primary"
             android:textSize="10sp" />
@@ -35,9 +35,9 @@
 
     <TextView
         android:id="@+id/tvTitle"
-        android:layout_width="108dp"
+        android:layout_width="112dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="8dp"
         android:ellipsize="end"
         android:maxLines="1"
         android:textColor="@color/text_primary"

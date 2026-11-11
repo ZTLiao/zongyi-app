@@ -62,10 +62,11 @@ class MineFragment : Fragment() {
                         putExtra("id", entry.vodId)
                         putExtra("title", entry.title)
                         putExtra("cover", entry.cover)
+                        putExtra("src", entry.srcKey)
                     })
                 },
                 onRemove = { entry ->
-                    Store.removeHistory(ctx, entry.vodId)
+                    Store.removeHistory(ctx, entry.vodId, entry.srcKey)
                     reload()
                 })
         } else {
@@ -101,8 +102,10 @@ class HistoryAdapter(
         h.b.imgCover.load(item.cover) { crossfade(true) }
         h.b.tvTitle.text = item.title
         h.b.tvSub.text = item.episodeName.ifBlank { "第${item.nid}集" }
+        val tag = if (item.srcKey == com.zongyi.box.data.Src.JUZI.key) ""
+        else "[${com.zongyi.box.data.Src.of(item.srcKey).label}] "
         val pct = if (item.durationMs > 0) " · 已看 ${item.positionMs * 100 / item.durationMs}%" else ""
-        h.b.tvTime.text = fmt.format(Date(item.updatedAt)) + pct
+        h.b.tvTime.text = tag + fmt.format(Date(item.updatedAt)) + pct
         h.b.btnRemove.setOnClickListener { onRemove(item) }
         h.b.root.setOnClickListener { onOpen(item) }
     }
