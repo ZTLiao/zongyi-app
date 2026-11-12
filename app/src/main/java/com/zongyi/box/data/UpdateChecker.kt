@@ -76,7 +76,9 @@ object UpdateChecker {
 
     /** 拉取最新版本清单；未配置更新源或全部镜像失败返回 null */
     suspend fun fetch(): Release? = withContext(Dispatchers.IO) {
-        for (url in UpdateConfig.manifestUrls) {
+        // Gitee raw 走 CDN 缓存，先带时间戳破缓存，失败再退回原始地址（缓存命中率更高）
+        val candidates = UpdateConfig.manifestUrls.flatMap { listOf(withCacheBuster(it), it) }
+        for (url in candidates) {
             try {
                 val req = Request.Builder()
                     .url(url)
@@ -99,6 +101,12 @@ object UpdateChecker {
             }
         }
         null
+    }
+
+    /** 追加时间戳参数，绕过 Gitee raw / CDN 的清单缓存 */
+    private fun withCacheBuster(url: String): String {
+        val sep = if (url.contains('?')) "&" else "?"
+        return "$url${sep}_t=${System.currentTimeMillis()}"
     }
 
     /**

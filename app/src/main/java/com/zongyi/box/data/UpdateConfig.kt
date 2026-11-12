@@ -1,30 +1,34 @@
 package com.zongyi.box.data
 
 /**
- * 版本更新配置 —— 零服务端方案。
+ * 版本更新配置 —— 零服务端方案（Gitee 分发仓库）。
  *
- * 原理：APK 与 update.json 作为同一个 GitHub Release 的附件发布，
- * App 只请求一个永远指向「最新 Release」的固定地址：
+ * 仓库里只放一个几百字节的 update.json，APK 放在该仓库的「发行版」附件里：
+ * ```
+ * update.json        版本清单，App 只读这一个（raw 可匿名读）
+ * app-release.apk    发行版附件（仓库 raw 对大文件要求登录，附件通道不受限制）
+ * ```
+ * 客户端请求的固定地址是 Gitee raw 路径：
  *
- *     https://github.com/{REPO}/releases/latest/download/update.json
+ *     https://gitee.com/{REPO}/raw/{BRANCH}/update.json
  *
- * 发布新版本时只需重新发一个 Release，该地址内容立即变化，
- * 不需要服务器、不需要数据库、不需要域名（GitHub 免费额度足够）。
- * 可选的 raw / Gitee / ghproxy 只是同一份清单的镜像，用于国内网络兜底。
+ * 每次发版覆盖提交 update.json、发一个新发行版，地址保持不变 ——
+ * 不需要服务器、不需要域名。
  *
- * 唯一需要改的地方：[REPO] 改成你自己的仓库（形如 "zhangsan/zongyibox-release"）。
- * 仓库建好后放一个 main 分支（可以有 README），Release 里上传
- * app-release.apk 与 update.json 两个附件即可。
+ * 注意：
+ * 1. 仓库必须是**公开**的，私有仓库的 raw 与附件都需要登录态，App 取不到；
+ * 2. Gitee raw 走 CDN 有缓存，拉清单时 UpdateChecker 会自动追加时间戳参数破缓存；
+ * 3. update.json 里的 apk 写发行版附件的绝对地址（发布脚本自动填）。
  *
  * 发布流程见 docs/update.md，一键发布用 tools/publish_update.sh。
  */
 object UpdateConfig {
 
-    /** GitHub 发布仓库：用户名/仓库名。保持默认占位值则视为未配置，App 静默跳过检查 */
-    private const val REPO = "USER/zongyibox-release"
+    /** Gitee 分发仓库：用户名/仓库名（保持 USER/ 开头视为未配置，App 静默跳过检查） */
+    private const val REPO = "liaz-app/zongyi-app"
 
-    /** Gitee 镜像仓库（可选）：用户名/仓库名，留空不启用 */
-    private const val GITEE_REPO = ""
+    /** 文件所在分支，与仓库默认分支一致 */
+    private const val BRANCH = "master"
 
     /** 启动时自动检查更新 */
     const val AUTO_CHECK_ON_START = true
@@ -32,23 +36,17 @@ object UpdateConfig {
     /** 自动检查节流：距上次检查不足该间隔则跳过（手动检查不受限） */
     const val CHECK_THROTTLE_MS = 10 * 60 * 1000L
 
-    /** 清单候选地址，按顺序探测，第一个能取到的生效 */
+    /** 清单地址，按顺序探测，第一个能取到的生效 */
     val manifestUrls: List<String> by lazy {
-        buildList {
-            if (isConfigured) {
-                // 指向 latest Release，无需 CDN 刷新，发版即生效
-                add("https://github.com/$REPO/releases/latest/download/update.json")
-                // 国内加速镜像（同时会用于 APK 下载）
-                add("https://ghproxy.net/https://github.com/$REPO/releases/latest/download/update.json")
-                // 备用：直接把 update.json 提交到仓库根目录
-                add("https://raw.githubusercontent.com/$REPO/main/update.json")
-            }
-            if (GITEE_REPO.isNotBlank()) {
-                add("https://gitee.com/$GITEE_REPO/raw/main/update.json")
-            }
-        }
+        if (!isConfigured) emptyList()
+        else listOf(
+            // Gitee 官方 raw 短链（部分网络/风控策略下会 404）
+            "https://gitee.com/$REPO/raw/$BRANCH/update.json",
+            // 实测可匿名访问的回源域名，作为兜底
+            "https://raw.giteeusercontent.com/$REPO/raw/$BRANCH/update.json",
+        )
     }
 
-    /** 是否已填入真实仓库；未配置时不做任何网络请求，也不打扰用户 */
+    /** 是否已填入真实仓库 */
     val isConfigured: Boolean get() = REPO.isNotBlank() && !REPO.startsWith("USER/")
 }

@@ -140,4 +140,48 @@ class UpdateCheckerTest {
         assertNotNull(r)
         assertTrue(r!!.apkUrls.isNotEmpty())
     }
+
+    /**
+     * 线上真实清单回归：Gitee 分发仓库的 apk 是发行版附件的绝对地址，
+     * 解析后必须原样保留（不能再拼清单目录、也不该被追加镜像）。
+     */
+    @Test
+    fun `Gitee 发行版附件地址原样保留`() {
+        val json = """
+            {
+              "versionCode": 2,
+              "versionName": "1.0.1",
+              "apk": "https://gitee.com/liaz-app/zongyi-app/releases/download/v1.0.1/app-release.apk",
+              "size": 16333928,
+              "sha256": "9a2ba48ec1702a8cf7d2ceb67840a3d10689f09c94cb629fa996573b8a3e8441",
+              "forceBelow": 0,
+              "publishedAt": "2026-11-12",
+              "changelog": "· 新增应用内检查更新"
+            }
+        """.trimIndent()
+        val r = UpdateChecker.parse(
+            json,
+            "https://raw.giteeusercontent.com/liaz-app/zongyi-app/raw/master/update.json?_t=1"
+        )!!
+        assertEquals(2, r.versionCode)
+        assertEquals(1, r.apkUrls.size)
+        assertEquals(
+            "https://gitee.com/liaz-app/zongyi-app/releases/download/v1.0.1/app-release.apk",
+            r.apkUrls.first()
+        )
+        // 本地 versionCode 1 的用户应当收到升级提示
+        assertTrue(UpdateChecker.isNewer(r, 1, "1.0.0"))
+        assertFalse(UpdateChecker.isNewer(r, 2, "1.0.1"))
+    }
+
+    /** 清单 URL 带破缓存参数时，相对 apk 路径不能被参数污染 */
+    @Test
+    fun `破缓存参数不影响相对路径拼接`() {
+        val json = """{"versionCode":3,"apk":"app-release.apk"}"""
+        val r = UpdateChecker.parse(
+            json,
+            "https://gitee.com/me/app/raw/master/update.json?_t=1700000000"
+        )!!
+        assertEquals("https://gitee.com/me/app/raw/master/app-release.apk", r.apkUrls.first())
+    }
 }

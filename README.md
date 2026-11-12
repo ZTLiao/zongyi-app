@@ -35,13 +35,12 @@
 
 ## 应用内更新（零服务端）
 
-APK 与 `update.json` 作为同一个 GitHub Release 的两个附件发布，客户端请求固定的
-`https://github.com/<仓库>/releases/latest/download/update.json` 判断版本，无需自建服务器。
+Gitee 公开仓库当版本接口：仓库根目录只放 `update.json`（App 读这一个），
+APK 放该仓库的「发行版」附件（仓库 raw 对大文件要求登录，附件 CDN 不受限）。
 一次性配置与发版流程见 `docs/update.md`，一键发布：
 
 ```bash
-tools/publish_update.sh --changelog "· 修复xxx"          # 生成 build/publish/
-tools/publish_update.sh --upload --changelog "· 修复xxx" # 直接发 Release（需 gh）
+GITEE_TOKEN=你的令牌 tools/publish_update.sh --upload --changelog "· 修复xxx"
 ```
 
 ## 回归测试
