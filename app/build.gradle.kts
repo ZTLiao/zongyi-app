@@ -40,6 +40,8 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        // 更新检查需要读取本地 versionCode/versionName 做比较
+        buildConfig = true
     }
     testOptions {
         // 单测运行在 JVM，android.util.Log 等框架方法返回默认值而非抛异常

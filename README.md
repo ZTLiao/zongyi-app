@@ -20,7 +20,7 @@
 | 搜索 | 关键词搜索 + 分页 |
 | 详情 | 简介出演 + 13 条线路切换 + 每线路分集列表 |
 | 播放器 | 原生 ExoPlayer：HLS 流解析、清晰度切换、多线路切换、上下集/选集、倍速(0.5~3x)、亮度/音量/快进手势、双击暂停、断点续播、观看历史 |
-| 我的 | 观看历史（含进度百分比）、收藏 |
+| 我的 | 观看历史（含进度百分比）、收藏、检查更新 |
 
 ## 构建
 
@@ -28,6 +28,20 @@
 # 需要 JDK 17 与 Android SDK（local.properties 指向 sdk.dir）
 ./tools/gradle-8.14.2/bin/gradle assembleRelease
 # 产物：app/build/outputs/apk/release/app-release.apk
+```
+
+> 签名文件 `zongyibox.jks` 与 `local.properties` 不入库（见 `.gitignore`），
+> 换机器构建 release 前需从私密备份取回 jks 放到项目根目录，否则只影响 release 签名，debug 构建不受影响。
+
+## 应用内更新（零服务端）
+
+APK 与 `update.json` 作为同一个 GitHub Release 的两个附件发布，客户端请求固定的
+`https://github.com/<仓库>/releases/latest/download/update.json` 判断版本，无需自建服务器。
+一次性配置与发版流程见 `docs/update.md`，一键发布：
+
+```bash
+tools/publish_update.sh --changelog "· 修复xxx"          # 生成 build/publish/
+tools/publish_update.sh --upload --changelog "· 修复xxx" # 直接发 Release（需 gh）
 ```
 
 ## 回归测试

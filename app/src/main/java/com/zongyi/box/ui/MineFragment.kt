@@ -40,6 +40,11 @@ class MineFragment : Fragment() {
             if (showHistory) Store.clearHistory(requireContext())
             reload()
         }
+        // 底部版本行：点击手动检查更新（无新版/失败都会 Toast 反馈）
+        b.tvVersion.text = UpdatePrompt.localVersionText()
+        b.rowUpdate.setOnClickListener {
+            (activity as? androidx.fragment.app.FragmentActivity)?.let { UpdatePrompt.manualCheck(it) }
+        }
         reload()
     }
 

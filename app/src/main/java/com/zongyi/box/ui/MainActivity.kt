@@ -45,6 +45,9 @@ class MainActivity : AppCompatActivity() {
 
         // 开屏广告：本次运行首次进入主界面时展示（未配置 Direct Link 时静默跳过）
         com.zongyi.box.ads.AdManager.showAppOpen(this)
+
+        // 静默检查更新：延迟到首屏与开屏广告之后，有新版本才弹窗
+        UpdatePrompt.autoCheck(this)
     }
 
     /**
