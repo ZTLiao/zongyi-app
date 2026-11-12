@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -15,19 +17,34 @@ android {
         versionName = "1.0.0"
     }
 
+    // 签名口令不落仓库：从本地 keystore.properties 或环境变量读取。
+    // 缺失时 release 不签名（产出 app-release-unsigned.apk），debug 构建不受影响。
+    val keystoreProps = Properties().apply {
+        val f = rootProject.file("keystore.properties")
+        if (f.exists()) f.inputStream().use { load(it) }
+    }
+    fun signingValue(key: String, env: String): String? =
+        keystoreProps.getProperty(key) ?: System.getenv(env)
+
     signingConfigs {
-        create("personal") {
-            storeFile = rootProject.file("zongyibox.jks")
-            storePassword = "***REMOVED***"
-            keyAlias = "zongyibox"
-            keyPassword = "***REMOVED***"
+        val storePath = signingValue("storeFile", "SIGNING_STORE_FILE")
+        val storePass = signingValue("storePassword", "SIGNING_STORE_PASSWORD")
+        val alias = signingValue("keyAlias", "SIGNING_KEY_ALIAS")
+        val keyPass = signingValue("keyPassword", "SIGNING_KEY_PASSWORD")
+        if (storePath != null && storePass != null && alias != null && keyPass != null) {
+            create("personal") {
+                storeFile = rootProject.file(storePath)
+                storePassword = storePass
+                keyAlias = alias
+                keyPassword = keyPass
+            }
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("personal")
+            signingConfig = signingConfigs.findByName("personal")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
