@@ -77,51 +77,43 @@
             android:textColor="#FFFFFF"
             android:textSize="12sp" />
 
-        <TextView
+        <ImageView
             android:id="@+id/player_btn_speed"
-            android:layout_width="wrap_content"
+            android:layout_width="40dp"
             android:layout_height="match_parent"
-            android:layout_marginStart="6dp"
-            android:background="?attr/selectableItemBackground"
-            android:gravity="center"
-            android:paddingHorizontal="10dp"
-            android:text="倍速"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp" />
+            android:layout_marginStart="4dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="倍速"
+            android:padding="9dp"
+            android:src="@drawable/ic_speed" />
 
-        <TextView
+        <ImageView
             android:id="@+id/player_btn_episodes"
-            android:layout_width="wrap_content"
+            android:layout_width="40dp"
             android:layout_height="match_parent"
-            android:background="?attr/selectableItemBackground"
-            android:gravity="center"
-            android:paddingHorizontal="10dp"
-            android:text="选集"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp" />
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="选集"
+            android:padding="9dp"
+            android:src="@drawable/ic_episodes" />
 
-        <TextView
+        <ImageView
             android:id="@+id/player_btn_prev"
-            android:layout_width="wrap_content"
+            android:layout_width="40dp"
             android:layout_height="match_parent"
-            android:background="?attr/selectableItemBackground"
-            android:gravity="center"
-            android:paddingHorizontal="10dp"
-            android:text="上一集"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp" />
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="上一集"
+            android:padding="9dp"
+            android:src="@drawable/ic_prev_ep" />
 
-        <TextView
+        <ImageView
             android:id="@+id/player_btn_next"
-            android:layout_width="wrap_content"
+            android:layout_width="40dp"
             android:layout_height="match_parent"
-            android:layout_marginEnd="8dp"
-            android:background="?attr/selectableItemBackground"
-            android:gravity="center"
-            android:paddingHorizontal="10dp"
-            android:text="下一集"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp" />
+            android:layout_marginEnd="6dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="下一集"
+            android:padding="9dp"
+            android:src="@drawable/ic_next_ep" />
 
         <ImageView
             android:id="@+id/fullscreen"
@@ -175,17 +167,15 @@
             android:textColor="@android:color/white"
             android:textSize="15sp" />
 
-        <TextView
+        <ImageView
             android:id="@+id/player_btn_line"
-            android:layout_width="wrap_content"
+            android:layout_width="40dp"
             android:layout_height="match_parent"
-            android:layout_marginEnd="10dp"
-            android:background="?attr/selectableItemBackground"
-            android:gravity="center"
-            android:paddingHorizontal="12dp"
-            android:text="线路"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp" />
+            android:layout_marginEnd="8dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="线路"
+            android:padding="9dp"
+            android:src="@drawable/ic_line" />
     </LinearLayout>
 
     <moe.codeest.enviews.ENDownloadView

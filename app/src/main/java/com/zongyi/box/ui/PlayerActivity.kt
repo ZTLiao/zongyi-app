@@ -10,9 +10,6 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.bottomsheet.BottomSheetDialog
-import com.google.android.material.chip.Chip
-import com.google.android.material.chip.ChipGroup
 import com.shuyu.gsyvideoplayer.GSYVideoManager
 import com.shuyu.gsyvideoplayer.listener.VideoAllCallBack
 import com.shuyu.gsyvideoplayer.player.PlayerFactory
@@ -91,6 +88,7 @@ class PlayerActivity : AppCompatActivity() {
         srcKey = intent.getStringExtra("src") ?: com.zongyi.box.data.Src.JUZI.key
 
         setupTopBar()
+        setupSidePanel()
         setupPlayerCallbacks()
         play()
     }
@@ -98,16 +96,15 @@ class PlayerActivity : AppCompatActivity() {
     private fun setupTopBar() {
         val p = b.player
         p.findViewById<android.widget.ImageView>(R.id.back).setOnClickListener { finish() }
-        p.findViewById<android.widget.TextView>(R.id.player_btn_speed).setOnClickListener { showSpeedDialog() }
-        p.findViewById<android.widget.TextView>(R.id.player_btn_prev).setOnClickListener { gotoEpisode(-1) }
-        p.findViewById<android.widget.TextView>(R.id.player_btn_next).setOnClickListener { gotoEpisode(1) }
-        p.findViewById<android.widget.TextView>(R.id.player_btn_line).setOnClickListener { showLineSheet() }
-        p.findViewById<android.widget.TextView>(R.id.player_btn_episodes).setOnClickListener { showEpisodeSheet() }
+        p.findViewById<android.widget.ImageView>(R.id.player_btn_speed).setOnClickListener { showSpeedDialog() }
+        p.findViewById<android.widget.ImageView>(R.id.player_btn_prev).setOnClickListener { gotoEpisode(-1) }
+        p.findViewById<android.widget.ImageView>(R.id.player_btn_next).setOnClickListener { gotoEpisode(1) }
+        p.findViewById<android.widget.ImageView>(R.id.player_btn_line).setOnClickListener { showLineSheet() }
+        p.findViewById<android.widget.ImageView>(R.id.player_btn_episodes).setOnClickListener { showEpisodeSheet() }
         playPauseBtn = p.findViewById(R.id.player_btn_playpause)
         playPauseBtn?.setOnClickListener { togglePlayPause() }
         // 标题走 GSY 内置顶栏（随控制栏一起显隐）
         p.findViewById<android.widget.TextView>(R.id.title).text = title
-        updateSpeedLabel()
         updatePlayPauseIcon()
         b.tvError.setOnClickListener {
             b.tvError.isVisible = false
@@ -117,14 +114,8 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
-    /** 底栏"倍速"按钮（B 站风格：常显当前倍速） */
-    private var speedBtn: android.widget.TextView? = null
+    /** 底栏播放/暂停按钮（状态跟随播放器，回调 + 轮询双保险同步图标） */
     private var playPauseBtn: android.widget.ImageView? = null
-
-    private fun updateSpeedLabel() {
-        if (speedBtn == null) speedBtn = b.player.findViewById(R.id.player_btn_speed)
-        speedBtn?.text = "倍速 ${speeds[speedIndex]}x"
-    }
 
     /** 底栏播放/暂停按钮（状态跟随播放器，回调 + 轮询双保险同步图标） */
     private fun togglePlayPause() {
@@ -289,10 +280,29 @@ class PlayerActivity : AppCompatActivity() {
         // 断点续播：首次进入时定位到上次观看位置
         p.setSeekOnStart(if (!resumed) resumePos() else 0)
         p.setSpeed(speeds[speedIndex])
+        resetProgressUi()
         p.startPlayLogic()
         resumed = true
         saveHistory()
         startProgressPolling()
+    }
+
+    /**
+     * 切集/换线路/重试时显式清零进度 UI。
+     * GSY 在新流 PREPAREING 期间不会主动刷新进度条，且其内部
+     * getCurrentPositionWhenPlaying() 存在旧 mCurrentPosition 回退逻辑，
+     * 不清零会残留上一集的进度条定位与时间文本。
+     */
+    @SuppressLint("SetTextI18n")
+    private fun resetProgressUi() {
+        val p = b.player
+        p.findViewById<android.widget.SeekBar>(R.id.progress)?.apply {
+            progress = 0
+            secondaryProgress = 0
+        }
+        p.findViewById<android.widget.TextView>(R.id.current)?.text = "00:00"
+        p.findViewById<android.widget.TextView>(R.id.total)?.text = "00:00"
+        p.findViewById<android.widget.ProgressBar>(R.id.bottom_progressbar)?.progress = 0
     }
 
     /** 上次观看位置（毫秒，同来源同线路同集） */
@@ -379,51 +389,41 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun showEpisodeSheet() {
         val src = currentSource() ?: return
-        val dialog = BottomSheetDialog(this)
-        val group = ChipGroup(this).apply { chipSpacingHorizontal = 8 }
-        src.episodes.forEach { ep ->
-            val chip = Chip(this)
-            chip.text = ep.name
-            chip.isCheckable = true
-            chip.isChecked = ep.nid == nid
-            chip.chipBackgroundColor = androidx.core.content.ContextCompat.getColorStateList(this, R.color.chip_bg)
-            chip.setTextColor(getColorStateList(R.color.chip_text))
-            chip.setOnClickListener {
-                dialog.dismiss()
-                switchTo(ep)
+        showSidePanel("选集 · 共 ${src.episodes.size} 集") { list ->
+            var selected: View? = null
+            src.episodes.forEach { ep ->
+                val row = panelRow(ep.name, ep.nid == nid) {
+                    hideSidePanel()
+                    switchTo(ep)
+                }
+                if (ep.nid == nid) selected = row
+                list.addView(row)
             }
-            group.addView(chip)
+            selected
         }
-        dialog.setContentView(wrapSheet(group, "选集 · 共 ${src.episodes.size} 集"))
-        dialog.show()
     }
 
     // ---------- 线路 / 倍速 ----------
 
     private fun showLineSheet() {
         val d = detail ?: return
-        val dialog = BottomSheetDialog(this)
-        val group = ChipGroup(this)
-        d.sources.forEach { src ->
-            val chip = Chip(this)
-            chip.text = "${src.name}（${src.episodes.size}集）"
-            chip.isCheckable = true
-            chip.isChecked = src.sid == sid
-            chip.chipBackgroundColor = androidx.core.content.ContextCompat.getColorStateList(this, R.color.chip_bg)
-            chip.setTextColor(getColorStateList(R.color.chip_text))
-            chip.setOnClickListener {
-                dialog.dismiss()
-                val ep = src.episodes.firstOrNull { it.nid == nid }
-                    ?: src.episodes.firstOrNull()
-                    ?: return@setOnClickListener
-                sid = src.sid
-                switchTo(ep)
+        showSidePanel("切换线路 · 共 ${d.sources.size} 条") { list ->
+            var selected: View? = null
+            d.sources.forEach { src ->
+                val isCurrent = src.sid == sid
+                val row = panelRow("${src.name} · ${src.episodes.size}集", isCurrent) {
+                    hideSidePanel()
+                    val ep = src.episodes.firstOrNull { it.nid == nid }
+                        ?: src.episodes.firstOrNull()
+                        ?: return@panelRow
+                    sid = src.sid
+                    switchTo(ep)
+                }
+                if (isCurrent) selected = row
+                list.addView(row)
             }
-            group.addView(chip)
+            selected
         }
-        val current = d.sources.firstOrNull { it.sid == sid }
-        dialog.setContentView(wrapSheet(group, "切换线路 · 当前 ${current?.name ?: "未知"}"))
-        dialog.show()
     }
 
     private fun showSpeedDialog() {
@@ -433,39 +433,72 @@ class PlayerActivity : AppCompatActivity() {
             .setSingleChoiceItems(items, speedIndex) { dlg, which ->
                 speedIndex = which
                 b.player.setSpeed(speeds[which])
-                updateSpeedLabel()
                 Toast.makeText(this, "已切换为 ${speeds[which]}x", Toast.LENGTH_SHORT).show()
                 dlg.dismiss()
             }
             .show()
     }
 
-    private fun wrapSheet(view: View, title: String): View {
-        val container = androidx.core.widget.NestedScrollView(this).apply {
-            layoutParams = android.view.ViewGroup.LayoutParams(
+    // ---------- 右侧侧边栏（B 站风格选集/线路面板） ----------
+
+    /** 侧边栏面板宽度（dp），与 activity_player.xml 中 panelSide 一致 */
+    private val sidePanelWidthDp = 300
+
+    /** 初始化侧边栏交互：遮罩点击/关闭按钮收起面板 */
+    private fun setupSidePanel() {
+        b.panelRoot.setOnClickListener { hideSidePanel() }
+        b.panelClose.setOnClickListener { hideSidePanel() }
+    }
+
+    /**
+     * 从右侧滑入面板（B 站播放器风格）：
+     * 遮罩渐显 + 面板平移入场，返回当前选中行用于自动滚动定位。
+     */
+    private fun showSidePanel(title: String, buildRows: (android.widget.LinearLayout) -> View?) {
+        b.panelTitle.text = title
+        b.panelList.removeAllViews()
+        val selected = buildRows(b.panelList)
+        val density = resources.displayMetrics.density
+        b.panelSide.translationX = sidePanelWidthDp * density
+        b.panelRoot.isVisible = true
+        b.panelRoot.alpha = 0f
+        b.panelRoot.animate().alpha(1f).setDuration(160).start()
+        b.panelSide.animate().translationX(0f).setDuration(220).start()
+        selected?.let { b.panelScroll.post { b.panelScroll.scrollTo(0, (it.top - 140).coerceAtLeast(0)) } }
+    }
+
+    private fun hideSidePanel() {
+        if (!b.panelRoot.isVisible) return
+        val density = resources.displayMetrics.density
+        b.panelSide.animate().translationX(sidePanelWidthDp * density).setDuration(200)
+            .withEndAction { b.panelRoot.isVisible = false }
+            .start()
+    }
+
+    /** 面板行（B 站风格）：圆角卡片行，当前项橙色加粗 + 橙色淡底，其余白字带涟漪反馈 */
+    private fun panelRow(text: String, selected: Boolean, onClick: () -> Unit): View {
+        val dp = resources.displayMetrics.density
+        return android.widget.TextView(this).apply {
+            this.text = text
+            textSize = 14f
+            setTextColor(getColor(if (selected) R.color.accent else R.color.text_primary))
+            if (selected) paint.isFakeBoldText = true
+            setPadding((22 * dp).toInt(), (26 * dp).toInt(), (22 * dp).toInt(), (26 * dp).toInt())
+            if (selected) {
+                setBackgroundResource(R.drawable.bg_panel_row_selected)
+            } else {
+                val tv = android.util.TypedValue()
+                theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
+                if (tv.resourceId != 0) setBackgroundResource(tv.resourceId)
+            }
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { onClick() }
+            layoutParams = android.widget.LinearLayout.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            setBackgroundColor(getColor(R.color.surface))
-            setPadding(48, 40, 48, 56)
+            ).apply { setMargins((10 * dp).toInt(), (2 * dp).toInt(), (10 * dp).toInt(), (2 * dp).toInt()) }
         }
-        // 标题行（当前集/当前线路），增强底部弹窗的上下文感
-        val titleView = android.widget.TextView(this).apply {
-            text = title
-            setTextColor(getColor(R.color.text_secondary))
-            textSize = 14f
-            setPadding(4, 0, 4, 16)
-        }
-        val box = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            addView(titleView)
-            addView(view)
-        }
-        container.addView(box, android.view.ViewGroup.LayoutParams(
-            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-        ))
-        return container
     }
 
     // ---------- 生命周期 ----------
