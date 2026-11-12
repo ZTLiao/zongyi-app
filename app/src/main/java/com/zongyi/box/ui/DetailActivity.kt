@@ -53,6 +53,10 @@ class DetailActivity : AppCompatActivity() {
         b.btnBack.setOnClickListener { finish() }
         b.tvTitle.text = prefillTitle
         if (prefillCover.isNotBlank()) b.imgCover.load(prefillCover)
+
+        // 详情页底部 banner 广告（未配置 Adsterra Direct Link 时容器保持 GONE）
+        com.zongyi.box.ads.AdManager.attachBanner(b.adBanner)
+
         b.tvIntro.setOnClickListener { b.tvIntro.maxLines = if (b.tvIntro.maxLines == 3) Int.MAX_VALUE else 3 }
 
         b.btnPlay.setOnClickListener {

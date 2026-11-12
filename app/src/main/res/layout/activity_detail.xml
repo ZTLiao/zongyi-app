@@ -204,5 +204,14 @@
             android:text="@string/load_failed"
             android:textColor="@color/text_secondary"
             android:visibility="gone" />
+
+        <!-- 广告横幅（Adsterra Direct Link 入口，未配置时保持 GONE 不占位） -->
+        <FrameLayout
+            android:id="@+id/adBanner"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:layout_marginHorizontal="12dp"
+            android:layout_marginBottom="12dp"
+            android:visibility="gone" />
     </LinearLayout>
 </androidx.core.widget.NestedScrollView>

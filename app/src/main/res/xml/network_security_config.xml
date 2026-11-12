@@ -6,9 +6,14 @@
   部分 Android 系统证书库尚未收录该根，导致
   CertPathValidatorException: Trust anchor for certification path not found。
   打包该根证书后完整链可验证（leaf ← ZeroSSL RSA DV SSL CA 2 ← R46）。
+
+  另：广告变现（Adsterra Direct Link）的落地页由投放方动态下发，
+  常见为 http 明文域名（如 arkrecode16.ero-labs.global），
+  且域名随广告计划变化无法预先白名单，故 base-config 放开 cleartextTrafficPermitted。
+  本项目不传输用户账号/支付类敏感数据，该放宽风险可控。
 -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false">
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
             <certificates src="@raw/sectigo_r46" />
