@@ -42,9 +42,6 @@ class MainActivity : AppCompatActivity() {
             // selectedItemId 已等于该值时监听器不会触发，显式补一次切换
             switchTo(tab)
         }
-
-        // 开屏广告：本次运行首次进入主界面时展示（未配置 Zone 时静默跳过）
-        com.zongyi.box.ads.AdManager.showAppOpen(this)
     }
 
     /**

@@ -5,111 +5,13 @@
     android:background="@android:color/black"
     android:keepScreenOn="true">
 
-    <!-- GSY 播放器（Media3/Exo 内核）：自带手势（亮度/音量/快进）、
-         进度条、缓冲提示、播放暂停、双击暂停、错误重试 UI -->
-    <com.shuyu.gsyvideoplayer.video.StandardGSYVideoPlayer
+    <!-- B 站风格 GSY 播放器（Media3/Exo 内核）：
+         顶栏=返回/标题/线路，底栏=播放暂停/时间/进度/倍速/选集/上下集，
+         随点击显隐、播放中自动隐藏（控制项内置在 GSY 控制容器内） -->
+    <com.zongyi.box.ui.BiliGSYPlayer
         android:id="@+id/player"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
-
-    <!-- 自定义顶部栏：标题 / 倍速 / 上下集 / 切换线路 / 画质 / 选集 -->
-    <LinearLayout
-        android:id="@+id/topBar"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:layout_gravity="top"
-        android:background="@drawable/player_top_scrim"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingHorizontal="8dp">
-
-        <ImageView
-            android:id="@+id/btnBack"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/tab_home"
-            android:padding="9dp"
-            android:src="@drawable/ic_back"
-            android:tint="@color/text_primary" />
-
-        <TextView
-            android:id="@+id/tvTitle"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="4dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="@color/text_primary"
-            android:textSize="15sp" />
-
-        <TextView
-            android:id="@+id/btnSpeed"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="?attr/selectableItemBackground"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="6dp"
-            android:text="倍速"
-            android:textColor="@color/text_primary"
-            android:textSize="13sp" />
-
-        <TextView
-            android:id="@+id/btnPrev"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="?attr/selectableItemBackground"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="6dp"
-            android:text="上一集"
-            android:textColor="@color/text_primary"
-            android:textSize="13sp" />
-
-        <TextView
-            android:id="@+id/btnNext"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="?attr/selectableItemBackground"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="6dp"
-            android:text="下一集"
-            android:textColor="@color/text_primary"
-            android:textSize="13sp" />
-
-        <TextView
-            android:id="@+id/btnLine"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="?attr/selectableItemBackground"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="6dp"
-            android:text="@string/switch_line"
-            android:textColor="@color/text_primary"
-            android:textSize="13sp" />
-
-        <TextView
-            android:id="@+id/btnQuality"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="?attr/selectableItemBackground"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="6dp"
-            android:text="@string/switch_quality"
-            android:textColor="@color/text_primary"
-            android:textSize="13sp" />
-
-        <TextView
-            android:id="@+id/btnEpisodes"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:background="?attr/selectableItemBackground"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="6dp"
-            android:text="@string/episode_list"
-            android:textColor="@color/text_primary"
-            android:textSize="13sp" />
-    </LinearLayout>
 
     <!-- 取流失败提示（GSY 自带播放错误 UI，这里只覆盖取流层失败） -->
     <TextView

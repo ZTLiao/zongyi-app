@@ -21,7 +21,7 @@ enum class Src(
     JUZI(
         "jz", "综艺盒子",
         "https://m.ijujizy.com",
-        listOf("https://m.ijujizy.com", "https://www.ijujizy.com"),
+        listOf("https://m.ijujizy.com", "https://www.ijujizy.com", "https://ijujizy.com"),
         listOf("vrdetail", "vrplay", "vrartdetail"),
     ),
     DY555(

@@ -89,7 +89,6 @@ class PlayerActivity : AppCompatActivity() {
         nid = intent.getIntExtra("nid", -1)
         title = intent.getStringExtra("title").orEmpty()
         srcKey = intent.getStringExtra("src") ?: com.zongyi.box.data.Src.JUZI.key
-        b.tvTitle.text = title
 
         setupTopBar()
         setupPlayerCallbacks()
@@ -97,23 +96,52 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun setupTopBar() {
-        b.btnBack.setOnClickListener { finish() }
-        b.btnSpeed.setOnClickListener { showSpeedDialog() }
-        b.btnPrev.setOnClickListener { gotoEpisode(-1) }
-        b.btnNext.setOnClickListener { gotoEpisode(1) }
-        b.btnLine.setOnClickListener { showLineSheet() }
-        b.btnEpisodes.setOnClickListener { showEpisodeSheet() }
-        b.btnQuality.setOnClickListener {
-            Toast.makeText(this, "当前 HLS 流为自适应码率，清晰度自动匹配", Toast.LENGTH_SHORT).show()
-        }
+        val p = b.player
+        p.findViewById<android.widget.ImageView>(R.id.back).setOnClickListener { finish() }
+        p.findViewById<android.widget.TextView>(R.id.player_btn_speed).setOnClickListener { showSpeedDialog() }
+        p.findViewById<android.widget.TextView>(R.id.player_btn_prev).setOnClickListener { gotoEpisode(-1) }
+        p.findViewById<android.widget.TextView>(R.id.player_btn_next).setOnClickListener { gotoEpisode(1) }
+        p.findViewById<android.widget.TextView>(R.id.player_btn_line).setOnClickListener { showLineSheet() }
+        p.findViewById<android.widget.TextView>(R.id.player_btn_episodes).setOnClickListener { showEpisodeSheet() }
+        playPauseBtn = p.findViewById(R.id.player_btn_playpause)
+        playPauseBtn?.setOnClickListener { togglePlayPause() }
+        // 标题走 GSY 内置顶栏（随控制栏一起显隐）
+        p.findViewById<android.widget.TextView>(R.id.title).text = title
+        updateSpeedLabel()
+        updatePlayPauseIcon()
         b.tvError.setOnClickListener {
             b.tvError.isVisible = false
             retryCount = 0
             retryPending = false
             play()
         }
-        // 顶栏倍速按钮常显当前倍速
-        b.btnSpeed.text = "倍速 ${speeds[speedIndex]}x"
+    }
+
+    /** 底栏"倍速"按钮（B 站风格：常显当前倍速） */
+    private var speedBtn: android.widget.TextView? = null
+    private var playPauseBtn: android.widget.ImageView? = null
+
+    private fun updateSpeedLabel() {
+        if (speedBtn == null) speedBtn = b.player.findViewById(R.id.player_btn_speed)
+        speedBtn?.text = "倍速 ${speeds[speedIndex]}x"
+    }
+
+    /** 底栏播放/暂停按钮（状态跟随播放器，回调 + 轮询双保险同步图标） */
+    private fun togglePlayPause() {
+        val p = b.player
+        if (p.currentState == com.shuyu.gsyvideoplayer.video.base.GSYVideoView.CURRENT_STATE_PLAYING) {
+            p.onVideoPause()
+        } else if (p.currentState == com.shuyu.gsyvideoplayer.video.base.GSYVideoView.CURRENT_STATE_PAUSE) {
+            p.onVideoResume()
+        }
+        updatePlayPauseIcon()
+    }
+
+    private fun updatePlayPauseIcon() {
+        if (playPauseBtn == null) playPauseBtn = b.player.findViewById(R.id.player_btn_playpause)
+        val playing = b.player.currentState ==
+            com.shuyu.gsyvideoplayer.video.base.GSYVideoView.CURRENT_STATE_PLAYING
+        playPauseBtn?.setImageResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play)
     }
 
     /** GSY 播放回调：错误自动重试 */
@@ -124,13 +152,18 @@ class PlayerActivity : AppCompatActivity() {
                 android.util.Log.i("ZongYiBox", "onPrepared s=$s current=$currentUrl")
                 retryCount = 0
                 retryPending = false
+                updatePlayPauseIcon()
             }
 
             override fun onClickStartIcon(s: String?, vararg objects: Any?) {}
             override fun onClickStartError(s: String?, vararg objects: Any?) {}
-            override fun onClickStop(s: String?, vararg objects: Any?) {}
+            override fun onClickStop(s: String?, vararg objects: Any?) {
+                updatePlayPauseIcon()
+            }
             override fun onClickStopFullscreen(s: String?, vararg objects: Any?) {}
-            override fun onClickResume(s: String?, vararg objects: Any?) {}
+            override fun onClickResume(s: String?, vararg objects: Any?) {
+                updatePlayPauseIcon()
+            }
             override fun onClickResumeFullscreen(s: String?, vararg objects: Any?) {}
             override fun onClickSeekbar(s: String?, vararg objects: Any?) {}
             override fun onClickSeekbarFullscreen(s: String?, vararg objects: Any?) {}
@@ -205,11 +238,17 @@ class PlayerActivity : AppCompatActivity() {
         retryPending = false
         lifecycleScope.launch {
             runSuspendCatching {
-                val d = async { detail ?: SiteApi.detail(com.zongyi.box.data.Src.of(srcKey), vodId).also { detail = it } }
+                // detail 兜底请求走新鲜缓存：从详情页点进来时通常已缓存，跳过网络
+                val d = async {
+                    detail ?: SiteApi.detail(
+                        com.zongyi.box.data.Src.of(srcKey), vodId, SiteApi.DETAIL_TTL_MS
+                    ).also { detail = it }
+                }
                 val stream = async { SiteApi.stream(com.zongyi.box.data.Src.of(srcKey), vodId, sid, nid) }
                 d.await() to stream.await()
             }.onSuccess { (d, stream) ->
                 // 播放前预取并过滤 m3u8 中的广告分片（博彩等），失败时自动回落原始地址
+                // （详情页已预取过时，此处直接命中缓存，点击即播）
                 val prepared = runSuspendCatching { SiteApi.prepareStream(stream.url, cacheDir) }
                     .getOrDefault(com.zongyi.box.data.PreparedStream(stream.url, 0))
                 if (prepared.removedAdSegments > 0) {
@@ -218,6 +257,12 @@ class PlayerActivity : AppCompatActivity() {
                 }
                 startStream(prepared.url, stream.from)
                 switching = false
+                // 开播即预取下一集：手动切集/自动连播秒开
+                nextEpisode()?.let { next ->
+                    launch {
+                        SiteApi.prefetchStream(com.zongyi.box.data.Src.of(srcKey), vodId, sid, next.nid, cacheDir)
+                    }
+                }
             }.onFailure { e ->
                 switching = false
                 if (e is CancellationException) return@onFailure
@@ -225,6 +270,13 @@ class PlayerActivity : AppCompatActivity() {
                 b.tvError.text = "获取视频地址失败：${e.message}\n点击重试，或切换线路"
             }
         }
+    }
+
+    /** 下一集（当前线路）；无则返回 null */
+    private fun nextEpisode(): Episode? {
+        val src = detail?.source(sid) ?: return null
+        val idx = src.episodes.indexOfFirst { it.nid == nid }
+        return src.episodes.getOrNull(idx + 1)
     }
 
     @SuppressLint("SetTextI18n")
@@ -259,6 +311,7 @@ class PlayerActivity : AppCompatActivity() {
             override fun run() {
                 if (isFinishing || isDestroyed) return
                 saveHistory()
+                updatePlayPauseIcon()
                 uiHandler.postDelayed(this, 3_000)
             }
         }
@@ -380,7 +433,7 @@ class PlayerActivity : AppCompatActivity() {
             .setSingleChoiceItems(items, speedIndex) { dlg, which ->
                 speedIndex = which
                 b.player.setSpeed(speeds[which])
-                b.btnSpeed.text = "倍速 ${speeds[which]}x"
+                updateSpeedLabel()
                 Toast.makeText(this, "已切换为 ${speeds[which]}x", Toast.LENGTH_SHORT).show()
                 dlg.dismiss()
             }

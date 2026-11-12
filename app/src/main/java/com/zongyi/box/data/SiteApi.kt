@@ -16,6 +16,9 @@ object SiteApi {
 
     private const val TAG = "ZongYiBox"
 
+    /** 详情页新鲜缓存窗口：进入详情页/播放器先显缓存秒开，后台再刷新 */
+    const val DETAIL_TTL_MS = 15 * 60_000L
+
     val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
@@ -23,6 +26,8 @@ object SiteApi {
         // 曾出现搜索永久 loading 的卡死，callTimeout 保证请求最终一定结束
         .callTimeout(30, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
+        // 站点主域优先 DoH、系统失败 DoH 兜底（防运营商 DNS 污染导致整源打不开）
+        .dns(SmartDns)
         .build()
 
     private suspend fun getHtml(url: String): String = withContext(Dispatchers.IO) {
@@ -221,6 +226,18 @@ object SiteApi {
         if (streamCache.size >= 40) streamCache.clear()
         streamCache[ck] = result
         return result
+    }
+
+    /**
+     * 静默预取：播放地址（内存缓存）+ 清洗后的本地播放列表（磁盘复用）。
+     * 在详情页/播放器后台调用，用户点击播放时全部命中缓存，点击即播。
+     * 任何失败都静默吞掉（预取只是加速，不承担功能）。
+     */
+    suspend fun prefetchStream(src: Src, id: Int, sid: Int, nid: Int, cacheDir: java.io.File) {
+        runSuspendCatching {
+            val info = stream(src, id, sid, nid)
+            prepareStream(info.url, cacheDir)
+        }
     }
 
     /**

@@ -40,9 +40,6 @@ class DetailActivity : AppCompatActivity() {
     /** 用户是否手动换过线路：后台静默刷新时不打扰已交互的界面 */
     private var userInteracted = false
 
-    /** 详情页新鲜缓存窗口 */
-    private val detailTtlMs = 15 * 60_000L
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         b = ActivityDetailBinding.inflate(layoutInflater)
@@ -56,20 +53,11 @@ class DetailActivity : AppCompatActivity() {
         b.btnBack.setOnClickListener { finish() }
         b.tvTitle.text = prefillTitle
         if (prefillCover.isNotBlank()) b.imgCover.load(prefillCover)
-
-        // 详情页底部 banner 广告（未配置 Adsterra Direct Link 时容器保持 GONE）
-        com.zongyi.box.ads.AdManager.attachBanner(b.adBanner)
         b.tvIntro.setOnClickListener { b.tvIntro.maxLines = if (b.tvIntro.maxLines == 3) Int.MAX_VALUE else 3 }
 
         b.btnPlay.setOnClickListener {
-            val d = detail ?: return@setOnClickListener
-            val src = d.source(currentSid) ?: d.firstAvailable() ?: return@setOnClickListener
-            // 优先跳最近看的那一集（同来源）
-            val resume = Store.history(this).firstOrNull { it.vodId == vodId && it.srcKey == srcKey }
-            val target = if (resume != null && resume.sid == src.sid)
-                src.episodes.firstOrNull { it.nid == resume.nid } ?: src.episodes.firstOrNull()
-            else src.episodes.firstOrNull()
-            target?.let { openPlayer(src.sid, it) }
+            val (src, ep) = playTarget() ?: return@setOnClickListener
+            openPlayer(src.sid, ep)
         }
         b.btnFav.setOnClickListener {
             val d = detail
@@ -107,7 +95,7 @@ class DetailActivity : AppCompatActivity() {
     private fun load(fromCache: Boolean = false) {
         b.progress.isVisible = true
         b.tvError.isVisible = false
-        val ttl = if (fromCache) detailTtlMs else 0
+        val ttl = if (fromCache) SiteApi.DETAIL_TTL_MS else 0
         lifecycleScope.launch {
             runSuspendCatching { SiteApi.detail(com.zongyi.box.data.Src.of(srcKey), vodId, ttl) }
                 .onSuccess { d ->
@@ -175,12 +163,34 @@ class DetailActivity : AppCompatActivity() {
         }
         updateResumeButton()
         renderEpisodes()
+        // 预取播放地址：用户点"立即播放"时秒开
+        prefetchPlay()
     }
 
     private fun selectSource(sid: Int) {
         userInteracted = true
         currentSid = sid
         renderEpisodes()
+    }
+
+    /** 默认播放目标：当前线路 +（续播集或第一集）；null=无可播内容 */
+    private fun playTarget(): Pair<Source, Episode>? {
+        val d = detail ?: return null
+        val src = d.source(currentSid) ?: d.firstAvailable() ?: return null
+        // 优先跳最近看的那一集（同来源）
+        val resume = Store.history(this).firstOrNull { it.vodId == vodId && it.srcKey == srcKey }
+        val target = if (resume != null && resume.sid == src.sid)
+            src.episodes.firstOrNull { it.nid == resume.nid } ?: src.episodes.firstOrNull()
+        else src.episodes.firstOrNull()
+        return target?.let { src to it }
+    }
+
+    /** 后台预取目标集的播放地址与清洗后播放列表：点击"立即播放"零网络等待 */
+    private fun prefetchPlay() {
+        val (src, ep) = playTarget() ?: return
+        lifecycleScope.launch {
+            SiteApi.prefetchStream(com.zongyi.box.data.Src.of(srcKey), vodId, src.sid, ep.nid, cacheDir)
+        }
     }
 
     private fun renderEpisodes() {

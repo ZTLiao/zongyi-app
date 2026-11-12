@@ -15,7 +15,6 @@ class App : Application(), ImageLoaderFactory {
         super.onCreate()
         HttpCache.init(this)
         DomainStore.init(this)
-        com.zongyi.box.ads.AdManager.init(this)
     }
 
     /**
@@ -27,6 +26,8 @@ class App : Application(), ImageLoaderFactory {
      */
     override fun newImageLoader(): ImageLoader {
         val client = OkHttpClient.Builder()
+            // 封面图域名同样走 DoH 兜底解析（防 DNS 污染导致图片全挂）
+            .dns(com.zongyi.box.data.SmartDns)
             .addInterceptor { chain ->
                 val req = chain.request()
                 val builder = req.newBuilder()

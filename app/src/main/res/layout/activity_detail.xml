@@ -26,6 +26,7 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:minHeight="260dp"
                 android:background="@drawable/detail_scrim"
                 android:orientation="vertical">
 
@@ -202,15 +203,6 @@
             android:layout_margin="40dp"
             android:text="@string/load_failed"
             android:textColor="@color/text_secondary"
-            android:visibility="gone" />
-
-        <!-- 广告横幅（Monetag banner，未配置时保持 GONE 不占位） -->
-        <FrameLayout
-            android:id="@+id/adBanner"
-            android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:layout_marginHorizontal="12dp"
-            android:layout_marginBottom="12dp"
             android:visibility="gone" />
     </LinearLayout>
 </androidx.core.widget.NestedScrollView>
