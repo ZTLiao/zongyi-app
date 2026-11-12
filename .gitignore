@@ -1,0 +1,38 @@
+# ---------- 构建产物 ----------
+build/
+.gradle/
+.kotlin/
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# ---------- 签名与密钥（严禁提交） ----------
+# zongyibox.jks 只保留在本地/私密备份中，仓库里放入等于泄露签名能力
+*.jks
+*.keystore
+*.p12
+keystore.properties
+signing.properties
+
+# ---------- 本机配置 ----------
+local.properties
+
+# ---------- IDE ----------
+.idea/
+*.iml
+*.hprof
+
+# ---------- 日志与临时文件 ----------
+*.log
+*.tmp
+*.part
+
+# ---------- 工作区笔记（仅本地） ----------
+.workbuddy/
+
+# ---------- 系统 ----------
+.DS_Store
+Thumbs.db
+desktop.ini
