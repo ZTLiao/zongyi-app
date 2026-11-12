@@ -1,4 +1,10 @@
+# ============================================================
+# 只放"不该进仓库"的东西。源码、fixtures 快照、tools/ 内置 Gradle
+# 都是有意提交的，不要在这里加通配规则把它们误伤（例如 *.jar）。
+# ============================================================
+
 # ---------- 构建产物 ----------
+# 任意层级的 build/ 目录（app/build、build/reports、build/publish 都在内）
 build/
 .gradle/
 .kotlin/
@@ -7,27 +13,37 @@ captures/
 *.aab
 *.ap_
 *.dex
+*.idsig
+*.hprof
+# Android Studio 里 Build > Generate Signed Bundle 的默认输出目录
+release/
 
 # ---------- 签名与密钥（严禁提交） ----------
 # zongyibox.jks 只保留在本地/私密备份中，仓库里放入等于泄露签名能力
 *.jks
 *.keystore
 *.p12
+*.pepk
 keystore.properties
 signing.properties
 
 # ---------- 本机配置 ----------
+# sdk.dir 等本机绝对路径，换机器即失效
 local.properties
+local.properties.*
 
 # ---------- IDE ----------
 .idea/
 *.iml
-*.hprof
 
 # ---------- 日志与临时文件 ----------
 *.log
 *.tmp
 *.part
+*.bak
+*.orig
+*.rej
+*~
 
 # ---------- 逆向侦察产物（第三方站点快照/截图，仅本地留存） ----------
 recon/
