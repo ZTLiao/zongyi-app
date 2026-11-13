@@ -1,0 +1,7 @@
+extensions:
+  - name: parallel-search
+    type: streamable_http
+    url: https://mcp.parallel.ai/mcp
+    enabled: true
+    timeout: 30
+    description: "Parallel Search MCP - 完全免费的搜索服务，无需 API Key"

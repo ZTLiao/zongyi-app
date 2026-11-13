@@ -1,20 +1,34 @@
 package com.zongyi.box
 
 import android.app.Application
+import androidx.appfunctions.service.AppFunctionConfiguration
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import com.zongyi.box.appfunctions.ZongYiAppFunctions
 import com.zongyi.box.data.BrowserHeaders
 import com.zongyi.box.data.DomainStore
 import com.zongyi.box.data.HttpCache
 import com.zongyi.box.data.Parser
+import com.zongyi.box.data.SourceHealth
+import com.zongyi.box.data.runSuspendCatching
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 
-class App : Application(), ImageLoaderFactory {
+class App : Application(), ImageLoaderFactory, AppFunctionConfiguration.Provider {
 
     override fun onCreate() {
         super.onCreate()
         HttpCache.init(this)
         DomainStore.init(this)
+        SourceHealth.init(this)
+        // appfunction AI 接入桥：用户开启过则随冷启动恢复监听
+        if (com.zongyi.box.data.AiBridge.isEnabled(this)) {
+            com.zongyi.box.data.AiBridge.start(this)
+        }
+        // 后台探测被隐藏的失效源，恢复可用则自动解除隐藏
+        kotlinx.coroutines.MainScope().launch {
+            runSuspendCatching { SourceHealth.recheckHidden() }
+        }
     }
 
     /**
@@ -44,4 +58,13 @@ class App : Application(), ImageLoaderFactory {
             .respectCacheHeaders(false)
             .build()
     }
+
+    /**
+     * Android MCP（AppFunctions）：按 Google 官方规范向系统注册 AI 可调用功能，
+     * Android 16+ 上 Gemini 等系统 Agent 可发现并调用（见 appfunctions/ZongYiAppFunctions.kt）。
+     */
+    override val appFunctionConfiguration: AppFunctionConfiguration
+        get() = AppFunctionConfiguration.Builder()
+            .addEnclosingClassFactory(ZongYiAppFunctions::class.java) { ZongYiAppFunctions(this) }
+            .build()
 }

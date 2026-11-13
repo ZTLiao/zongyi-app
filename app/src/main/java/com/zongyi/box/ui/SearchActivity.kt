@@ -14,6 +14,8 @@ import com.google.android.material.chip.ChipGroup
 import com.zongyi.box.R
 import com.zongyi.box.databinding.ActivitySearchBinding
 import com.zongyi.box.data.SiteApi
+import com.zongyi.box.data.Src
+import com.zongyi.box.data.SourceHealth
 import com.zongyi.box.data.Store
 import com.zongyi.box.data.runSuspendCatching
 import kotlinx.coroutines.async
@@ -112,28 +114,27 @@ class SearchActivity : AppCompatActivity() {
         b.tvEmpty.isVisible = false
         b.rvGrid.isVisible = !(!append && keyword.isEmpty())
         lifecycleScope.launch {
-            // 双站搜索：综艺盒子分页 + 555影视单页（第一页时并入）
-            val jz = async {
-                runSuspendCatching { SiteApi.search(com.zongyi.box.data.Src.JUZI, keyword, p) }.getOrNull()
+            // 多站搜索：综艺盒子分页 + 555影视/猴影工坊单页（第一页时并入）；
+            // 蓝光影院搜索被站点拦截不支持；失效源已被 SourceHealth 隐藏不参与
+            val srcs = SourceHealth.available()
+            val jobs = srcs.map { s ->
+                async {
+                    if (s == Src.TBL || (s != Src.JUZI && p > 1)) return@async null
+                    runSuspendCatching { SiteApi.search(s, keyword, p) }.getOrNull()
+                }
             }
-            val dy = async {
-                if (p == 1) runSuspendCatching { SiteApi.search(com.zongyi.box.data.Src.DY555, keyword, 1) }.getOrNull()
-                else null
-            }
-            val jzData = jz.await()
-            val dyData = dy.await()
+            val results = jobs.map { it.await() }
             b.progress.isVisible = false
             loading = false
 
-            if (jzData == null && dyData == null) {
+            if (results.all { it == null }) {
                 b.tvEmpty.text = "搜索失败：网络异常"
                 b.tvEmpty.isVisible = !append
                 return@launch
             }
             val items = mutableListOf<com.zongyi.box.data.VodItem>()
-            jzData?.let { items.addAll(it.items) }
-            dyData?.let { items.addAll(it.items) }
-            totalPages = jzData?.totalPages ?: 1
+            results.forEach { it?.let { d -> items.addAll(d.items) } }
+            totalPages = results.firstOrNull { it != null && it.totalPages > 1 }?.totalPages ?: 1
             if (append) adapter.append(items) else adapter.submit(items)
             b.rvGrid.isVisible = items.isNotEmpty()
             b.tvEmpty.isVisible = !append && items.isEmpty()

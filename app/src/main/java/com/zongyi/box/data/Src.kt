@@ -4,6 +4,8 @@ package com.zongyi.box.data
  * 内容来源站。App 聚合多个 MacCMS 站点：
  * - JUZI 综艺盒子（m.ijujizy.com，定制 vr 模板）
  * - DY555 555影视（www.5k35.top，mxone 标准模板）
+ * - TBL 蓝光影院（touhaos.top，myui 模板）
+ * - MF 猴影工坊（monkey-flix.com，Astro SSR + MacCMS 数据）
  *
  * 每个源携带候选域名列表：当前域名不可访问时自动切换到下一个
  * （见 SiteApi.getHtml），切换结果由 DomainStore 持久化，下次启动直接用可用域名。
@@ -29,6 +31,18 @@ enum class Src(
         "https://www.5k35.top",
         listOf("https://www.5k35.top", "https://5k35.top"),
         listOf("voddetail", "vodplay", "module-"),
+    ),
+    TBL(
+        "tbl", "蓝光影院",
+        "https://touhaos.top",
+        listOf("https://touhaos.top", "https://www.touhaos.top"),
+        listOf("myui-vodlist", "myui-panel"),
+    ),
+    MF(
+        "mf", "猴影工坊",
+        "https://monkey-flix.com",
+        listOf("https://monkey-flix.com", "https://www.monkey-flix.com"),
+        listOf("/watch/", "astro-"),
     );
 
     /** 当前生效域名（可能被故障切换/持久化覆盖） */

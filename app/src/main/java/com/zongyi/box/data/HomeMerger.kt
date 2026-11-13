@@ -41,43 +41,48 @@ object HomeMerger {
         t.replace(Regex("[\\s·．.。:：,，、!！?？~～()（）\\[\\]【】]"), "").lowercase()
 
     /** 两列表交错合并（1:1 轮流，尾部多余追加） */
-    private fun <T> interleave(a: List<T>, b: List<T>): List<T> {
+    private fun <T> interleave(a: List<T>, b: List<T>): List<T> =
+        interleaveAll(listOf(a, b))
+
+    /** N 列表交错合并（轮流取各列表头元素，尾部多余追加） */
+    private fun <T> interleaveAll(lists: List<List<T>>): List<T> {
         val out = mutableListOf<T>()
-        val max = maxOf(a.size, b.size)
+        val max = lists.maxOfOrNull { it.size } ?: 0
         for (i in 0 until max) {
-            if (i < a.size) out.add(a[i])
-            if (i < b.size) out.add(b[i])
+            lists.forEach { if (i < it.size) out.add(it[i]) }
         }
         return out
     }
 
     /**
-     * 合并两源首页数据。
-     * @return null 表示两源全部失败
+     * 合并 N 源首页数据。
+     * @return null 表示所有源全部失败
      */
-    fun mergeHome(jz: HomeData?, dy: HomeData?): HomeData? {
-        if (jz == null && dy == null) return null
-        // 单源可用时另一源视为空列表，走同一套合并逻辑，保证结构一致（同样有「今日热播」首屏）
-        return mergeCore(
-            jz ?: HomeData(emptyList(), emptyList()),
-            dy ?: HomeData(emptyList(), emptyList())
-        )
+    fun mergeHome(homes: List<HomeData?>): HomeData? {
+        val nonNull = homes.filterNotNull()
+        if (nonNull.isEmpty()) return null
+        return mergeCore(nonNull)
     }
 
-    private fun mergeCore(jz: HomeData, dy: HomeData): HomeData {
+    /** 双源合并兼容入口 */
+    fun mergeHome(jz: HomeData?, dy: HomeData?): HomeData? = mergeHome(listOf(jz, dy))
+
+    private fun mergeCore(homes: List<HomeData>): HomeData {
+
+        data class SrcSection(val title: String, val items: List<VodItem>)
 
         // ---------- 全页去重：banner、首屏、各版块共用一个 seen 集合 ----------
         val seen = mutableSetOf<String>()
 
-        // ---------- Banner：两源交错精选 ----------
-        val banner = interleave(jz.banner, dy.banner)
+        // ---------- Banner：多源交错精选 ----------
+        val banner = interleaveAll(homes.map { it.banner })
             .filter { seen.add(normalizeTitle(it.title)) }
             .take(5)
 
         // ---------- 版块：交替排列 + 美化标题 ----------
-        data class SrcSection(val title: String, val items: List<VodItem>)
-        val jzSecs = jz.sections.map { SrcSection(prettifyTitle(it.title), it.items) }
-        val dySecs = dy.sections.map { SrcSection(prettifyTitle(it.title), it.items) }
+        val srcSecs = homes.map { home ->
+            home.sections.map { SrcSection(prettifyTitle(it.title), it.items) }
+        }
 
         val sections = mutableListOf<Section>()
 
@@ -88,20 +93,19 @@ object HomeMerger {
             if (clean.size >= min) sections.add(Section(title, clean))
         }
 
-        // 首屏焦点：两源各版块头部内容交错混排（最低 2 条即展示，保证单源小数据时也有首屏焦点）
-        val heroPool = interleave(
-            jzSecs.flatMap { it.items.take(2) },
-            dySecs.flatMap { it.items.take(2) }
-        )
+        // 首屏焦点：各源各版块头部内容交错混排（最低 2 条即展示，保证单源小数据时也有首屏焦点）
+        val heroPool = interleaveAll(srcSecs.map { secs -> secs.flatMap { it.items.take(2) } })
         addSection("今日热播", heroPool, HERO_LIMIT, min = 2)
 
-        // 其余版块：两源轮流出现（跳过每版块前 2 条已进首屏的部分？不，重看体验保留完整列表，
-        // 由跨版块去重保证首屏出现过的剧不再重复出现）
-        var i = 0
-        var j = 0
-        while (i < jzSecs.size || j < dySecs.size) {
-            if (i < jzSecs.size) { addSection(jzSecs[i].title, jzSecs[i].items); i++ }
-            if (j < dySecs.size) { addSection(dySecs[j].title, dySecs[j].items); j++ }
+        // 其余版块：多源轮流出现，由跨版块去重保证首屏出现过的剧不再重复出现
+        var round = 0
+        while (true) {
+            var any = false
+            srcSecs.forEach { secs ->
+                if (round < secs.size) { addSection(secs[round].title, secs[round].items); any = true }
+            }
+            if (!any) break
+            round++
         }
 
         // 版块为空时兜底（理论上 banner 存在即有内容）

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 侧边栏面板背景：深色面板，左侧圆角 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#F5171A21" />
+    <corners android:topLeftRadius="16dp" android:bottomLeftRadius="16dp" />
+</shape>

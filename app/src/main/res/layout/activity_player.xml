@@ -24,4 +24,73 @@
         android:text="@string/load_failed"
         android:textColor="@color/text_primary"
         android:visibility="gone" />
+
+    <!-- B 站风格右侧侧边栏（选集/切换线路）：半透明遮罩 + 右侧滑入面板 -->
+    <FrameLayout
+        android:id="@+id/panelRoot"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/black_overlay"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/panelSide"
+            android:layout_width="300dp"
+            android:layout_height="match_parent"
+            android:layout_gravity="end"
+            android:background="@drawable/bg_side_panel"
+            android:clickable="true"
+            android:focusable="true"
+            android:orientation="vertical">
+
+            <!-- 面板标题行：标题 + 关闭 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="20dp"
+                android:paddingEnd="8dp">
+
+                <TextView
+                    android:id="@+id/panelTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="@color/text_primary"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <ImageView
+                    android:id="@+id/panelClose"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="关闭"
+                    android:padding="11dp"
+                    android:src="@drawable/ic_close" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1px"
+                android:background="@color/divider" />
+
+            <ScrollView
+                android:id="@+id/panelScroll"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:id="@+id/panelList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="16dp" />
+            </ScrollView>
+        </LinearLayout>
+    </FrameLayout>
 </FrameLayout>

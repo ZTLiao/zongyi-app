@@ -3,6 +3,8 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    // AppFunctions（Android MCP）：@AppFunction 注解 → schema 生成
+    id("com.google.devtools.ksp")
 }
 
 android {
@@ -79,6 +81,12 @@ dependencies {
     implementation("org.jsoup:jsoup:1.18.3")
     implementation("com.google.code.gson:gson:2.11.0")
 
+    // Android MCP：AppFunctions（Google 官方规范，Android 16+ 由系统索引，AI Agent 可发现并调用）
+    // alpha10+ 要求 compileSdk 37/AGP 9.1；alpha08 兼容 compileSdk 36 + AGP 8.9.1
+    implementation("androidx.appfunctions:appfunctions:1.0.0-alpha08")
+    implementation("androidx.appfunctions:appfunctions-service:1.0.0-alpha08")
+    ksp("androidx.appfunctions:appfunctions-compiler:1.0.0-alpha08")
+
     // 播放器：GSYVideoPlayer（GitHub 最活跃的开源播放器库），内核为 Media3/ExoPlayer
     implementation("io.github.carguo:gsyvideoplayer-java:14.0.0")
     implementation("io.github.carguo:gsyvideoplayer-exo2:14.0.0")
@@ -92,4 +100,6 @@ dependencies {
     // 单元测试
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    // JVM 单测里 org.json 被 android.jar 桩替换，用真实实现跑 AiBridge 协议测试
+    testImplementation("org.json:json:20240303")
 }

@@ -26,7 +26,9 @@ data class HomeData(
 /** 某条线路的分集 */
 data class Episode(
     val nid: Int,
-    val name: String
+    val name: String,
+    /** 直链播放源（猴影工坊：地址在详情数据里）；其余源为空串，走播放页解析 */
+    val url: String = ""
 )
 
 /** 线路 */
