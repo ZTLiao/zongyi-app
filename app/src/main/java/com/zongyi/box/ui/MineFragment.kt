@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -45,12 +46,95 @@ class MineFragment : Fragment() {
         b.rowUpdate.setOnClickListener {
             (activity as? androidx.fragment.app.FragmentActivity)?.let { UpdatePrompt.manualCheck(it) }
         }
+        // AI 接入（appfunction）：开关本地桥接服务，展示端点与令牌
+        b.rowAi.setOnClickListener { showAiBridgeDialog() }
         reload()
+    }
+
+    private fun aiStatusText(): String {
+        val ctx = requireContext()
+        return if (com.zongyi.box.data.AiBridge.isRunning()) {
+            "运行中 :${com.zongyi.box.data.AiBridge.port(ctx)}"
+        } else "未开启"
+    }
+
+    private fun refreshAiStatus() {
+        b.tvAiStatus.text = aiStatusText()
+    }
+
+    /** AI 接入（appfunction）：开关 + 端点/令牌展示，AI 侧凭令牌经 HTTP 调用 app 功能 */
+    private fun showAiBridgeDialog() {
+        val ctx = requireContext()
+        val switch = com.google.android.material.switchmaterial.SwitchMaterial(ctx).apply {
+            isChecked = com.zongyi.box.data.AiBridge.isRunning()
+            text = if (isChecked) "已开启，等待 AI 接入" else "已关闭"
+        }
+        val tvEndpoint = android.widget.TextView(ctx).apply {
+            textSize = 13f
+            setTextColor(androidx.core.content.ContextCompat.getColor(ctx, R.color.text_primary))
+            setPadding(0, 24, 0, 4)
+            text = "端点：${endpointText()}"
+        }
+        val tvToken = android.widget.TextView(ctx).apply {
+            textSize = 12f
+            setTextColor(androidx.core.content.ContextCompat.getColor(ctx, R.color.text_secondary))
+            setPadding(0, 4, 0, 4)
+            text = "令牌：${com.zongyi.box.data.AiBridge.token(ctx)}"
+        }
+        val tvTip = android.widget.TextView(ctx).apply {
+            textSize = 12f
+            setTextColor(androidx.core.content.ContextCompat.getColor(ctx, R.color.text_secondary))
+            setPadding(0, 16, 0, 0)
+            text = "开启后 AI（本机或局域网）可通过 HTTP 调用 app 的搜索、详情、播放、历史、收藏等功能：\nGET /appfunction 功能清单 · POST /appfunction/call 调用\n鉴权：X-Api-Token 或 ?token="
+        }
+        val btnCopy = android.widget.TextView(ctx).apply {
+            textSize = 13f
+            setTextColor(androidx.core.content.ContextCompat.getColor(ctx, R.color.accent))
+            setPadding(0, 20, 0, 0)
+            text = "复制端点与令牌"
+            setOnClickListener {
+                val text = "端点：${endpointText()}\n令牌：${com.zongyi.box.data.AiBridge.token(ctx)}"
+                ctx.getSystemService(android.content.ClipboardManager::class.java)
+                    .setPrimaryClip(android.content.ClipData.newPlainText("appfunction", text))
+                Toast.makeText(ctx, "已复制", Toast.LENGTH_SHORT).show()
+            }
+        }
+        val box = android.widget.LinearLayout(ctx).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(56, 40, 56, 24)
+            addView(switch)
+            addView(tvEndpoint)
+            addView(tvToken)
+            addView(btnCopy)
+            addView(tvTip)
+        }
+        androidx.appcompat.app.AlertDialog.Builder(ctx, R.style.Theme_ZongYiBox)
+            .setTitle("AI 接入")
+            .setView(box)
+            .setPositiveButton("完成", null)
+            .setOnDismissListener { refreshAiStatus() }
+            .show()
+        switch.setOnCheckedChangeListener { _, checked ->
+            com.zongyi.box.data.AiBridge.setEnabled(ctx, checked)
+            switch.text = if (checked) "已开启，等待 AI 接入" else "已关闭"
+            if (checked) {
+                tvEndpoint.text = "端点：${endpointText()}"
+                Toast.makeText(ctx, "AI 接入已开启：${endpointText()}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun endpointText(): String {
+        val ip = com.zongyi.box.data.AiBridge.lanIp() ?: "127.0.0.1"
+        return "http://$ip:${com.zongyi.box.data.AiBridge.port(requireContext())}/appfunction"
     }
 
     override fun onResume() {
         super.onResume()
-        if (_b != null) reload()
+        if (_b != null) {
+            reload()
+            refreshAiStatus()
+        }
     }
 
     private fun reload() {

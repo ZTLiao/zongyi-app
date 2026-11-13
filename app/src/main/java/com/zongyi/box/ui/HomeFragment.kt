@@ -19,7 +19,7 @@ import com.zongyi.box.R
 import com.zongyi.box.data.HomeData
 import com.zongyi.box.data.HomeMerger.mergeHome
 import com.zongyi.box.data.SiteApi
-import com.zongyi.box.data.Src
+import com.zongyi.box.data.SourceHealth
 import com.zongyi.box.data.VodItem
 import com.zongyi.box.data.runSuspendCatching
 import com.zongyi.box.databinding.FragmentHomeBinding
@@ -57,6 +57,10 @@ class HomeFragment : Fragment() {
         b.rvHome.layoutManager = LinearLayoutManager(requireContext())
         b.tvError.setOnClickListener { load(forceNetwork = false) }
         b.tvSrcStatus.setOnClickListener { load(forceNetwork = false) }
+        // 源隐藏/恢复时（如失效源自动隐藏）重载首页
+        viewLifecycleOwner.lifecycleScope.launch {
+            SourceHealth.availableFlow.collect { load(forceNetwork = false) }
+        }
         load(forceNetwork = false)
     }
 
@@ -66,20 +70,17 @@ class HomeFragment : Fragment() {
         b.refresh.isRefreshing = true
         val ttl = if (forceNetwork) 0 else homeTtlMs
         viewLifecycleOwner.lifecycleScope.launch {
-            // 双源并发加载；单站失败不影响另一站展示
-            val jz = async {
-                runSuspendCatching { SiteApi.home(Src.JUZI, ttl) }
-                    .onFailure { Log.w(TAG, "综艺盒子源加载失败", it) }
-                    .getOrNull()
+            // 全部可用源并发加载；单站失败不影响其他站展示
+            val sources = SourceHealth.available()
+            val jobs = sources.map { s ->
+                async {
+                    runSuspendCatching { SiteApi.home(s, ttl) }
+                        .onFailure { Log.w(TAG, "${s.label}源加载失败", it) }
+                        .getOrNull()
+                }
             }
-            val dy = async {
-                runSuspendCatching { SiteApi.home(Src.DY555, ttl) }
-                    .onFailure { Log.w(TAG, "555影视源加载失败", it) }
-                    .getOrNull()
-            }
-            val jzData = jz.await()
-            val dyData = dy.await()
-            val data = mergeHome(jzData, dyData)
+            val results = jobs.map { it.await() }
+            val data = mergeHome(results)
             b.refresh.isRefreshing = false
             if (data == null) {
                 if (b.rvHome.adapter == null || b.rvHome.adapter!!.itemCount == 0) {
@@ -90,16 +91,17 @@ class HomeFragment : Fragment() {
             }
             render(data)
             // 单源失败时给出可见提示（内容仍可看，但用户应知道哪个源挂了）
-            if (jzData == null || dyData == null) {
-                val lost = if (jzData == null) "综艺盒子" else "555影视"
-                b.tvSrcStatus.text = "「$lost」源暂时连不上，其余内容正常 · 点击重试"
+            val lost = sources.filterIndexed { i, _ -> results[i] == null }.map { it.label }
+            if (lost.isNotEmpty()) {
+                b.tvSrcStatus.text = "「${lost.joinToString("」「")}」源暂时连不上，其余内容正常 · 点击重试"
                 b.tvSrcStatus.visibility = View.VISIBLE
             }
             // 缓存秒开后，后台静默拉最新数据，内容有变化才无感更新列表
             if (!forceNetwork) launch {
-                val jz2 = async { runSuspendCatching { SiteApi.home(Src.JUZI) }.getOrNull() }
-                val dy2 = async { runSuspendCatching { SiteApi.home(Src.DY555) }.getOrNull() }
-                val fresh = mergeHome(jz2.await(), dy2.await())
+                val freshJobs = SourceHealth.available().map { s ->
+                    async { runSuspendCatching { SiteApi.home(s) }.getOrNull() }
+                }
+                val fresh = mergeHome(freshJobs.map { it.await() })
                 if (_b != null && fresh != null && fresh != data) render(fresh)
             }
         }

@@ -13,7 +13,9 @@ import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import com.zongyi.box.R
 import com.zongyi.box.data.Parser55
+import com.zongyi.box.data.ParserMonkey
 import com.zongyi.box.data.SiteApi
+import com.zongyi.box.data.SourceHealth
 import com.zongyi.box.data.Src
 import com.zongyi.box.data.runSuspendCatching
 import com.zongyi.box.databinding.FragmentCategoryBinding
@@ -31,6 +33,12 @@ class CategoryFragment : Fragment() {
     )
     // 555影视（mxone 模板）分类
     private val cats555 = Parser55.categories
+    // 蓝光影院（myui 模板）分类
+    private val catsTbl = listOf(
+        "电影" to 1, "电视剧" to 2, "综艺" to 3, "动漫" to 4, "短剧" to 37
+    )
+    // 猴影工坊（Astro SSR）分类
+    private val catsMf = ParserMonkey.categories
     private val sorts = listOf("按更新" to "time", "按人气" to "hits", "按评分" to "score")
     private val years = listOf(
         "全部" to "", "2026" to "2026", "2025" to "2025", "2024" to "2024",
@@ -59,6 +67,19 @@ class CategoryFragment : Fragment() {
 
     override fun onViewCreated(v: View, s: Bundle?) {
         buildChips()
+        // 源隐藏/恢复时重建来源 chips；当前源被隐藏则切回第一个可用源
+        viewLifecycleOwner.lifecycleScope.launch {
+            SourceHealth.availableFlow.collect {
+                if (_b == null) return@collect
+                if (SourceHealth.isHidden(src)) {
+                    src = SourceHealth.available().firstOrNull() ?: Src.JUZI
+                    sel555.clear(); cat = currentCats.firstOrNull()?.second ?: 1
+                    buildChips(); refresh()
+                } else {
+                    buildChips()
+                }
+            }
+        }
         adapter = VodGridAdapter { Nav.detail(requireContext(), it) }
         val lm = GridLayoutManager(requireContext(), 3)
         b.rvGrid.layoutManager = lm
@@ -86,11 +107,15 @@ class CategoryFragment : Fragment() {
     }
 
     private fun buildChips() {
-        // 来源切换
+        // 来源切换（失效源已被 SourceHealth 隐藏，不再出现）
         b.chipsSrc.removeAllViews()
-        Src.entries.forEach { s ->
+        SourceHealth.available().forEach { s ->
             b.chipsSrc.addView(chip(s.label, s == src) {
-                if (src != s) { src = s; sel555.clear(); buildChips(); refresh() }
+                if (src != s) {
+                    src = s; sel555.clear()
+                    cat = currentCats.firstOrNull()?.second ?: 1
+                    buildChips(); refresh()
+                }
             })
         }
         fill(b.chipsCategory, currentCats, 0) { v -> cat = v as Int; sel555.clear(); buildChips(); refresh() }
@@ -98,15 +123,20 @@ class CategoryFragment : Fragment() {
     }
 
     private val currentCats: List<Pair<String, Int>>
-        get() = if (src == Src.JUZI) catsJuzi else cats555
+        get() = when (src) {
+            Src.JUZI -> catsJuzi
+            Src.DY555 -> cats555
+            Src.TBL -> catsTbl
+            Src.MF -> catsMf
+        }
 
-    /** 筛选行：盒子源=排序/年份；555 源=从站点动态解析的 5 组精细筛选 */
+    /** 筛选行：盒子源=排序/年份；555 源=动态精细筛选；蓝光/猴影源暂无筛选行 */
     private fun buildFilterRows() {
         b.filtersBox.removeAllViews()
         if (src == Src.JUZI) {
             addRow(sorts.map { it.first to it.second }, sort) { v -> sort = v; refresh() }
             addRow(years.map { it.first to it.second }, year) { v -> year = v; refresh() }
-        } else {
+        } else if (src == Src.DY555) {
             viewLifecycleOwner.lifecycleScope.launch {
                 runSuspendCatching { SiteApi.filters555(cat) }
                     .onSuccess { groups ->
@@ -172,12 +202,13 @@ class CategoryFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             runSuspendCatching {
                 if (src == Src.JUZI) SiteApi.category(src, cat, sort, year, p, ttlMs = listTtlMs)
-                else SiteApi.category555(
+                else if (src == Src.DY555) SiteApi.category555(
                     cat,
                     area = sel555[1] ?: "", by = sel555[2] ?: "", cls = sel555[3] ?: "",
                     lang = sel555[4] ?: "", year = sel555[11] ?: "", page = p,
                     ttlMs = listTtlMs
                 )
+                else SiteApi.category(src, cat, "", "", p, ttlMs = listTtlMs)
             }
                 .onSuccess { data ->
                     totalPages = data.totalPages

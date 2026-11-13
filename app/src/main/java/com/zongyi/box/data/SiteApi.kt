@@ -63,6 +63,7 @@ object SiteApi {
                     DomainStore.record(src)
                     Log.i(TAG, "${src.label} 已自动切换到域名: ${attempt.base}")
                 }
+                if (src != null) SourceHealth.markSuccess(src)
                 HttpCache.save(attempt.url, html)
                 return@withContext html
             } catch (ce: CancellationException) {
@@ -74,7 +75,9 @@ object SiteApi {
         }
         // 全部域名失败：回读历史缓存，保证界面有数据、App 不崩
         val cached = HttpCache.load(url)
-        if (cached != null) cached else throw (lastError ?: IllegalStateException("加载失败: $url"))
+        // 有缓存兜底但站点已连不上：仍计一次失败，连续失败将触发整源隐藏
+        if (src != null) SourceHealth.markFailure(src)
+        return@withContext cached ?: throw (lastError ?: IllegalStateException("加载失败: $url"))
     }
 
     private fun fetchHtmlOnce(url: String): String {
@@ -84,6 +87,17 @@ object SiteApi {
             check(resp.isSuccessful) { "HTTP ${resp.code}: $url" }
             resp.body?.string() ?: throw IllegalStateException("空响应: $url")
         }
+    }
+
+    /** 源健康探测用：拉取页面原文（不做域名切换、不计失败） */
+    suspend fun fetchHtmlPublic(url: String): String = fetchHtmlOnce(url)
+
+    /** 探测源当前是否可用（首页可访问且内容签名匹配） */
+    suspend fun probe(src: Src): Boolean = try {
+        val html = fetchHtmlPublic(src.base + "/")
+        src.markers.any { html.contains(it) }
+    } catch (_: Exception) {
+        false
     }
 
     /**
@@ -96,16 +110,24 @@ object SiteApi {
         val url = when (src) {
             Src.JUZI -> Parser.BASE + "/"
             Src.DY555 -> Src.DY555.base + "/"
+            Src.TBL -> Src.TBL.base + "/"
+            Src.MF -> Src.MF.base + "/"
         }
         HttpCache.loadFresh(url, ttlMs)?.let { cached ->
-            val data = if (src == Src.JUZI) Parser.parseHome(cached)
-            else Parser55.parseHome(cached)
+            val data = when (src) {
+                Src.JUZI -> Parser.parseHome(cached)
+                Src.DY555 -> Parser55.parseHome(cached)
+                Src.TBL -> ParserTouhaos.parseHome(cached)
+                Src.MF -> ParserMonkey.parseHome(cached)
+            }
             Log.i(TAG, "首页[${src.label}] 缓存秒开 ${System.currentTimeMillis() - t0}ms")
             return@withContext data
         }
         val data = when (src) {
             Src.JUZI -> Parser.parseHome(getHtml(Parser.BASE + "/"))
             Src.DY555 -> Parser55.parseHome(getHtml(Src.DY555.base + "/"))
+            Src.TBL -> ParserTouhaos.parseHome(getHtml(Src.TBL.base + "/"))
+            Src.MF -> ParserMonkey.parseHome(getHtml(Src.MF.base + "/"))
         }
         Log.i(TAG, "首页[${src.label}] 网络加载 ${System.currentTimeMillis() - t0}ms")
         data
@@ -118,16 +140,22 @@ object SiteApi {
         val url = when (src) {
             Src.JUZI -> Parser.categoryUrl(cat, sort, "", page, year)
             Src.DY555 -> Parser55.typeUrl(cat)
+            Src.TBL -> ParserTouhaos.categoryUrl(cat, page)
+            Src.MF -> ParserMonkey.browseUrl(cat, page)
         }
         return withContext(Dispatchers.Default) {
             val cached = HttpCache.loadFresh(url, ttlMs)
             if (cached != null) return@withContext when (src) {
                 Src.JUZI -> Parser.parsePage(cached, page)
                 Src.DY555 -> Parser55.parsePage(cached, page)
+                Src.TBL -> ParserTouhaos.parsePage(cached, page)
+                Src.MF -> ParserMonkey.parsePage(cached, page)
             }
             when (src) {
                 Src.JUZI -> Parser.parsePage(getHtml(url), page)
                 Src.DY555 -> Parser55.parsePage(getHtml(url), page)
+                Src.TBL -> ParserTouhaos.parsePage(getHtml(url), page)
+                Src.MF -> ParserMonkey.parsePage(getHtml(url), page)
             }
         }
     }
@@ -173,6 +201,13 @@ object SiteApi {
                     if (Parser55.isSearchEmpty(html)) PageData(emptyList(), 1, 1)
                     else Parser55.parsePage(html, 1)
                 }
+                // 蓝光影院搜索被站点安全验证拦截，直接返回空（不发起无效请求）
+                Src.TBL -> PageData(emptyList(), page, 1)
+                Src.MF -> {
+                    val html = getHtml(ParserMonkey.searchUrl(encoded))
+                    if (ParserMonkey.isSearchEmpty(html)) PageData(emptyList(), 1, 1)
+                    else ParserMonkey.parsePage(html, 1)
+                }
             }
         }
     }
@@ -183,6 +218,8 @@ object SiteApi {
         val url = when (src) {
             Src.JUZI -> Parser.detailUrl(id)
             Src.DY555 -> Parser55.detailUrl(id)
+            Src.TBL -> ParserTouhaos.detailUrl(id)
+            Src.MF -> ParserMonkey.detailUrl(id)
         }
         return withContext(Dispatchers.Default) {
             val cached = HttpCache.loadFresh(url, ttlMs)
@@ -190,6 +227,8 @@ object SiteApi {
                 val d = when (src) {
                     Src.JUZI -> Parser.parseDetail(cached, id)
                     Src.DY555 -> Parser55.parseDetail(cached, id)
+                    Src.TBL -> ParserTouhaos.parseDetail(cached, id)
+                    Src.MF -> ParserMonkey.parseDetail(cached, id)
                 }
                 Log.i(TAG, "详情[$id] 缓存秒开 ${System.currentTimeMillis() - t0}ms")
                 return@withContext d
@@ -197,6 +236,8 @@ object SiteApi {
             val d = when (src) {
                 Src.JUZI -> Parser.parseDetail(getHtml(url), id)
                 Src.DY555 -> Parser55.parseDetail(getHtml(url), id)
+                Src.TBL -> ParserTouhaos.parseDetail(getHtml(url), id)
+                Src.MF -> ParserMonkey.parseDetail(getHtml(url), id)
             }
             Log.i(TAG, "详情[$id] 网络加载 ${System.currentTimeMillis() - t0}ms")
             d
@@ -210,22 +251,56 @@ object SiteApi {
     /** 已清洗 m3u8 的本地播放列表：url → (文件, 过滤分片数)，避免重复拉取/清洗 */
     private val cleanedPlaylists = java.util.concurrent.ConcurrentHashMap<String, kotlin.Pair<String, Int>>()
 
-    /** 播放页 → 播放地址（player_aaaa 两站同构） */
+    /** 播放页 → 播放地址（player_aaaa 两站同构；TBL/MF 走各自链路） */
     suspend fun stream(src: Src, id: Int, sid: Int, nid: Int): StreamInfo {
         val ck = "${src.key}|$id|$sid|$nid"
         streamCache[ck]?.let { return it }
-        val html = when (src) {
-            Src.JUZI -> getHtml(Parser.playUrl(id, sid, nid))
-            Src.DY555 -> getHtml(Parser55.playUrl(id, sid, nid))
+        val info: StreamInfo = withContext(Dispatchers.Default) {
+            when (src) {
+                Src.JUZI -> {
+                    val html = getHtml(Parser.playUrl(id, sid, nid))
+                    Parser.parsePlayPage(html)?.let {
+                        it.copy(nid = nid)
+                    } ?: throw IllegalStateException(
+                        "未能从播放页提取视频地址 (src=${src.key} id=$id sid=$sid nid=$nid)")
+                }
+                Src.DY555 -> {
+                    val html = getHtml(Parser55.playUrl(id, sid, nid))
+                    Parser.parsePlayPage(html)?.let {
+                        it.copy(nid = nid)
+                    } ?: throw IllegalStateException(
+                        "未能从播放页提取视频地址 (src=${src.key} id=$id sid=$sid nid=$nid)")
+                }
+                Src.TBL -> {
+                    // 播放页 var now="https://host/share/<hash>" → share 页 const url= → m3u8 直链
+                    val playHtml = getHtml(ParserTouhaos.playUrl(id, sid, nid))
+                    val shareUrl = ParserTouhaos.parsePlayShareUrl(playHtml)
+                        ?: throw IllegalStateException("播放页缺少 share 地址 (src=tbl id=$id sid=$sid nid=$nid)")
+                    val shareHtml = getHtml(shareUrl)
+                    val m3u8 = ParserTouhaos.parseShareM3u8(shareUrl, shareHtml)
+                        ?: throw IllegalStateException("share 页未找到 m3u8 地址 (id=$id sid=$sid nid=$nid)")
+                    StreamInfo(m3u8, "蓝光影院", nid, prevNid = null, nextNid = null)
+                }
+                Src.MF -> {
+                    // 播放地址直接存在详情数据里，复用详情缓存（15 分钟窗口内秒取）
+                    val d = detail(src, id, DETAIL_TTL_MS)
+                    val line = d.source(sid)
+                        ?: throw IllegalStateException("猴影工坊无该线路 (id=$id sid=$sid)")
+                    val idx = line.episodes.indexOfFirst { it.nid == nid }
+                    val ep = line.episodes.getOrNull(idx)
+                        ?: throw IllegalStateException("猴影工坊无该分集 (id=$id sid=$sid nid=$nid)")
+                    StreamInfo(
+                        ep.url,
+                        "猴影工坊", nid,
+                        prevNid = line.episodes.getOrNull(idx - 1)?.nid,
+                        nextNid = line.episodes.getOrNull(idx + 1)?.nid,
+                    )
+                }
+            }
         }
-        val info = withContext(Dispatchers.Default) {
-            Parser.parsePlayPage(html)
-                ?: throw IllegalStateException("未能从播放页提取视频地址 (src=${src.key} id=$id sid=$sid nid=$nid)")
-        }
-        val result = info.copy(nid = nid)
         if (streamCache.size >= 40) streamCache.clear()
-        streamCache[ck] = result
-        return result
+        streamCache[ck] = info
+        return info
     }
 
     /**
