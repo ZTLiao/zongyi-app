@@ -1,6 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 侧边栏当前选中行：圆角橙色淡底 -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="#2FFF6A3D" />
-    <corners android:radius="12dp" />
-</shape>
+<!-- 侧边栏当前选中行：圆角橙色淡底，遥控器焦点时加橙色实线描边 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#2FFF6A3D" />
+            <corners android:radius="12dp" />
+            <stroke android:width="2dp" android:color="@color/accent" />
+        </shape>
+    </item>
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#2FFF6A3D" />
+            <corners android:radius="12dp" />
+            <stroke android:width="2dp" android:color="@color/accent" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#2FFF6A3D" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+</selector>

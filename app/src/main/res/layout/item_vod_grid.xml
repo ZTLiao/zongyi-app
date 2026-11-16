@@ -5,6 +5,9 @@
     android:layout_height="wrap_content"
     android:gravity="center_horizontal"
     android:orientation="vertical"
+    android:focusable="true"
+    android:clickable="true"
+    android:background="@drawable/bg_tv_focus"
     android:paddingHorizontal="6dp"
     android:paddingBottom="12dp">
 

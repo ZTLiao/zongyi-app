@@ -55,6 +55,29 @@ class ParserMonkeyTest {
         assertTrue(ParserMonkey.isSearchEmpty("<html><body>没有找到相关内容</body></html>"))
     }
 
+    // ---------- 分类筛选 URL 组合 ----------
+
+    @Test
+    fun browseUrl_noFilter() {
+        assertEquals("https://monkey-flix.com/browse?type=3", ParserMonkey.browseUrl(3))
+    }
+
+    @Test
+    fun browseUrl_allFilters() {
+        assertEquals(
+            "https://monkey-flix.com/browse?type=3&genre=25&year=2026&order_by=vod_year&page=2",
+            ParserMonkey.browseUrl(3, page = 2, genre = "25", year = "2026", orderBy = "vod_year")
+        )
+    }
+
+    @Test
+    fun browseUrl_partialFilters_page1Omitted() {
+        assertEquals(
+            "https://monkey-flix.com/browse?type=1&order_by=vod_douban_score",
+            ParserMonkey.browseUrl(1, genre = "", year = " ", orderBy = "vod_douban_score")
+        )
+    }
+
     // ---------- 详情 ----------
 
     @Test

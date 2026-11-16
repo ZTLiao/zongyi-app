@@ -11,10 +11,20 @@
     android:layout_height="match_parent"
     android:background="@android:color/black">
 
+    <!-- 焦点沉底视图（1px 不可见）：GSY 隐藏 thumb 时系统会把焦点重分配给
+         首个可聚焦可见视图——没有它焦点会静默落到顶栏返回键/线路按钮上，
+         遥控器确认键就会被误触。焦点停在这里时，所有按键由 Activity 层处理 -->
+    <View
+        android:id="@+id/focus_sink"
+        android:layout_width="1px"
+        android:layout_height="1px"
+        android:focusable="true" />
+
     <RelativeLayout
         android:id="@+id/surface_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:focusable="false"
         android:gravity="center" />
 
     <RelativeLayout
@@ -22,6 +32,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="#000000"
+        android:focusable="true"
         android:scaleType="fitCenter" />
 
     <!-- 底栏：播放/暂停 · 时间 · 进度 · 倍速 · 选集 · 上一集 · 下一集 -->
@@ -40,7 +51,8 @@
             android:layout_width="40dp"
             android:layout_height="40dp"
             android:layout_marginStart="6dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/bg_icon_focus"
+            android:focusable="true"
             android:padding="9dp"
             android:src="@drawable/ic_pause" />
 
@@ -61,6 +73,7 @@
             android:layout_marginHorizontal="8dp"
             android:layout_weight="1.0"
             android:background="@null"
+            android:focusable="false"
             android:max="100"
             android:maxHeight="3dp"
             android:minHeight="3dp"
@@ -82,7 +95,8 @@
             android:layout_width="40dp"
             android:layout_height="match_parent"
             android:layout_marginStart="4dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/bg_icon_focus"
+            android:focusable="true"
             android:contentDescription="倍速"
             android:padding="9dp"
             android:src="@drawable/ic_speed" />
@@ -91,7 +105,8 @@
             android:id="@+id/player_btn_episodes"
             android:layout_width="40dp"
             android:layout_height="match_parent"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/bg_icon_focus"
+            android:focusable="true"
             android:contentDescription="选集"
             android:padding="9dp"
             android:src="@drawable/ic_episodes" />
@@ -100,7 +115,8 @@
             android:id="@+id/player_btn_prev"
             android:layout_width="40dp"
             android:layout_height="match_parent"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/bg_icon_focus"
+            android:focusable="true"
             android:contentDescription="上一集"
             android:padding="9dp"
             android:src="@drawable/ic_prev_ep" />
@@ -110,7 +126,8 @@
             android:layout_width="40dp"
             android:layout_height="match_parent"
             android:layout_marginEnd="6dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/bg_icon_focus"
+            android:focusable="true"
             android:contentDescription="下一集"
             android:padding="9dp"
             android:src="@drawable/ic_next_ep" />
@@ -151,7 +168,8 @@
             android:id="@+id/back"
             android:layout_width="42dp"
             android:layout_height="42dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/bg_icon_focus"
+            android:focusable="false"
             android:scaleType="centerInside"
             android:padding="10dp"
             android:src="@drawable/ic_back" />
@@ -172,7 +190,8 @@
             android:layout_width="40dp"
             android:layout_height="match_parent"
             android:layout_marginEnd="8dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/bg_icon_focus"
+            android:focusable="true"
             android:contentDescription="线路"
             android:padding="9dp"
             android:src="@drawable/ic_line" />
@@ -191,7 +210,8 @@
         android:layout_width="60dp"
         android:layout_height="60dp"
         android:layout_centerHorizontal="true"
-        android:layout_centerVertical="true" />
+        android:layout_centerVertical="true"
+        android:focusable="false" />
 
     <ImageView
         android:id="@+id/small_close"

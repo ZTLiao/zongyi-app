@@ -70,6 +70,10 @@ class HomeFragment : Fragment() {
         b.refresh.isRefreshing = true
         val ttl = if (forceNetwork) 0 else homeTtlMs
         viewLifecycleOwner.lifecycleScope.launch {
+            // 全部源被隐藏（长时间离线后）时，重试/下拉刷新先重新探测，恢复的源自动解除隐藏
+            if (SourceHealth.available().isEmpty()) {
+                runSuspendCatching { SourceHealth.recheckHidden() }
+            }
             // 全部可用源并发加载；单站失败不影响其他站展示
             val sources = SourceHealth.available()
             val jobs = sources.map { s ->
@@ -169,6 +173,9 @@ class HomeAdapter(
     private fun bindBanner(h: BannerVH, banner: List<VodItem>) {
         val dots = h.b.bannerDots
         val vp = h.b.vpBanner
+        // ViewPager2 内层 RecyclerView 会抢占遥控器焦点形成"死键"（确认无响应），
+        // 关掉它自身的焦点资格，让焦点直接落到轮播卡片（item_banner_page 已可聚焦）
+        (vp.getChildAt(0) as? android.view.ViewGroup)?.isFocusable = false
         dots.removeAllViews()
         repeat(banner.size) { dots.addTab(dots.newTab()) }
         vp.adapter = object : RecyclerView.Adapter<BannerVH2>() {

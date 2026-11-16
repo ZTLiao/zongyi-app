@@ -1,8 +1,8 @@
 package com.zongyi.box.data
 
-import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
-import org.jsoup.nodes.Element
+import com.zongyi.jsoup.Jsoup
+import com.zongyi.jsoup.nodes.Document
+import com.zongyi.jsoup.nodes.Element
 import org.json.JSONObject
 
 /**
@@ -25,8 +25,17 @@ object ParserMonkey {
 
     // ---------- URL 构造 ----------
 
-    fun browseUrl(cat: Int, page: Int = 1): String =
-        if (page <= 1) "$BASE/browse?type=$cat" else "$BASE/browse?type=$cat&page=$page"
+    fun browseUrl(
+        cat: Int, page: Int = 1,
+        genre: String = "", year: String = "", orderBy: String = "",
+    ): String {
+        val sb = StringBuilder("$BASE/browse?type=$cat")
+        if (genre.isNotBlank()) sb.append("&genre=$genre")
+        if (year.isNotBlank()) sb.append("&year=$year")
+        if (orderBy.isNotBlank()) sb.append("&order_by=$orderBy")
+        if (page > 1) sb.append("&page=$page")
+        return sb.toString()
+    }
 
     fun searchUrl(kw: String): String = "$BASE/search?q=$kw"
 
@@ -34,6 +43,33 @@ object ParserMonkey {
 
     /** 分类 id → 展示名 */
     val categories = listOf("电影片" to 1, "连续剧" to 2, "综艺片" to 3, "动漫片" to 4)
+
+    /**
+     * 各分类下的类型子分类（站点导航 genre 参数，2026-11 侦察）。
+     * key = browseUrl 的 type 值
+     */
+    val genresByType: Map<Int, List<Pair<String, Int>>> = mapOf(
+        1 to listOf(
+            "动作片" to 6, "喜剧片" to 7, "爱情片" to 8, "科幻片" to 9,
+            "恐怖片" to 10, "剧情片" to 11, "战争片" to 12, "记录片" to 20, "伦理片" to 34,
+        ),
+        2 to listOf(
+            "国产剧" to 13, "香港剧" to 14, "韩国剧" to 15, "欧美剧" to 16,
+            "台湾剧" to 21, "日本剧" to 22, "海外剧" to 23, "泰国剧" to 24, "短剧" to 36,
+        ),
+        3 to listOf("大陆综艺" to 25, "港台综艺" to 26, "日韩综艺" to 27, "欧美综艺" to 28),
+        4 to listOf("国产动漫" to 29, "日韩动漫" to 30, "欧美动漫" to 31, "港台动漫" to 32, "海外动漫" to 33),
+    )
+
+    /** 年代筛选（year 参数，全部=""） */
+    val yearsMf = listOf(
+        "2026" to "2026", "2020年代" to "2020_2026", "2010年代" to "2010_2019",
+        "2000年代" to "2000_2009", "90年代" to "1990_1999", "80年代" to "1980_1989",
+        "70年代" to "1970_1979", "60年代" to "1960_1969", "更早" to "1871_1959",
+    )
+
+    /** 排序（order_by 参数，综合排序=""） */
+    val ordersMf = listOf("首映时间" to "vod_year", "高分优先" to "vod_douban_score")
 
     // ---------- 通用条目 ----------
 

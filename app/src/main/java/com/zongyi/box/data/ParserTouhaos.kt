@@ -1,8 +1,8 @@
 package com.zongyi.box.data
 
-import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
-import org.jsoup.nodes.Element
+import com.zongyi.jsoup.Jsoup
+import com.zongyi.jsoup.nodes.Document
+import com.zongyi.jsoup.nodes.Element
 
 /**
  * 蓝光影院（touhaos.top，myui 模板）解析器。

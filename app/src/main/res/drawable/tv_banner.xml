@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TV 桌面横幅（320x180）：深色底 + 橙色圆角方块 + 白色播放三角 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/bg" />
+        </shape>
+    </item>
+    <!-- 中央橙色圆角方块：320x180，方块 88x88，居中 -->
+    <item
+        android:left="116dp"
+        android:top="46dp"
+        android:right="116dp"
+        android:bottom="46dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/accent" />
+            <corners android:radius="22dp" />
+        </shape>
+    </item>
+    <!-- 白色播放三角（覆色版 glyph） -->
+    <item
+        android:drawable="@drawable/tv_banner_glyph"
+        android:left="116dp"
+        android:top="46dp"
+        android:right="116dp"
+        android:bottom="46dp"
+        android:gravity="center" />
+</layer-list>

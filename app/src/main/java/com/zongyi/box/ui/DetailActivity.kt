@@ -42,8 +42,13 @@ class DetailActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // TV/盒子横屏（手机保持布局声明的竖屏），失败不影响启动
+        TvCompat.applyOrientation(this)
         b = ActivityDetailBinding.inflate(layoutInflater)
         setContentView(b.root)
+        // NestedScrollView 构造器会强制 setFocusable(true)，抢走遥控器初始焦点，
+        // 这里显式关掉：焦点直接落到返回/立即播放按钮
+        b.root.isFocusable = false
 
         vodId = intent.getIntExtra("id", -1)
         srcKey = intent.getStringExtra("src") ?: com.zongyi.box.data.Src.JUZI.key

@@ -78,7 +78,11 @@ dependencies {
 
     // 网络 + 解析
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("org.jsoup:jsoup:1.18.3")
+    // jsoup 使用本地重定位版（org.jsoup -> com.zongyi.jsoup，tools/relocate_jsoup.py 生成）：
+    // 部分电视/盒子（如 TCL）把旧版 jsoup 打进系统 framework，boot classpath 优先级更高，
+    // 应用内的 org.jsoup 类会被系统旧版遮蔽，selectFirst 等方法 NoSuchMethodError 闪崩。
+    // 重定位到私有包名后与系统 jar 完全隔离。
+    implementation(files("libs/jsoup-relocated.jar"))
     implementation("com.google.code.gson:gson:2.11.0")
 
     // Android MCP：AppFunctions（Google 官方规范，Android 16+ 由系统索引，AI Agent 可发现并调用）

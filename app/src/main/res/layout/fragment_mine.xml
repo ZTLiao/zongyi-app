@@ -25,7 +25,8 @@
             android:id="@+id/btnClear"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="?attr/selectableItemBackground"
+            android:background="@drawable/bg_tv_focus"
+            android:focusable="true"
             android:padding="6dp"
             android:text="清空"
             android:textColor="@color/text_secondary" />
@@ -64,6 +65,7 @@
             android:id="@+id/rvMine"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:focusable="false"
             android:clipToPadding="false"
             android:paddingHorizontal="14dp"
             android:paddingTop="8dp"
@@ -89,6 +91,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="?attr/selectableItemBackground"
+        android:foreground="@drawable/bg_tv_focus"
+        android:focusable="true"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingHorizontal="16dp"
@@ -98,7 +102,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="AI 接入"
+            android:text="@string/ai_access"
             android:textColor="@color/text_primary"
             android:textSize="14sp" />
 
@@ -117,41 +121,7 @@
             android:alpha="0.5"
             android:src="@drawable/ic_chevron_right"
             app:tint="@color/text_secondary"
-            android:contentDescription="AI 接入" />
+            android:contentDescription="@string/ai_access" />
     </LinearLayout>
 
-    <LinearLayout
-        android:id="@+id/rowUpdate"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="?attr/selectableItemBackground"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingHorizontal="16dp"
-        android:paddingVertical="14dp">
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/check_update"
-            android:textColor="@color/text_primary"
-            android:textSize="14sp" />
-
-        <TextView
-            android:id="@+id/tvVersion"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="@color/text_secondary"
-            android:textSize="13sp" />
-
-        <ImageView
-            android:layout_width="16dp"
-            android:layout_height="16dp"
-            android:layout_marginStart="6dp"
-            android:alpha="0.5"
-            android:src="@drawable/ic_chevron_right"
-            app:tint="@color/text_secondary"
-            android:contentDescription="@string/check_update" />
-    </LinearLayout>
 </LinearLayout>

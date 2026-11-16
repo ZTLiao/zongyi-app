@@ -18,16 +18,23 @@ class App : Application(), ImageLoaderFactory, AppFunctionConfiguration.Provider
 
     override fun onCreate() {
         super.onCreate()
-        HttpCache.init(this)
-        DomainStore.init(this)
-        SourceHealth.init(this)
+        // 崩溃防护必须最先安装：此后任何初始化异常都不会直接杀死进程
+        CrashGuard.install(this)
+        // 各初始化相互独立、逐项兜底：任何一项失败都不影响启动
+        runCatching { HttpCache.init(this) }
+        runCatching { DomainStore.init(this) }
+        runCatching { SourceHealth.init(this) }
         // appfunction AI 接入桥：用户开启过则随冷启动恢复监听
-        if (com.zongyi.box.data.AiBridge.isEnabled(this)) {
-            com.zongyi.box.data.AiBridge.start(this)
+        runCatching {
+            if (com.zongyi.box.data.AiBridge.isEnabled(this)) {
+                com.zongyi.box.data.AiBridge.start(this)
+            }
         }
         // 后台探测被隐藏的失效源，恢复可用则自动解除隐藏
-        kotlinx.coroutines.MainScope().launch {
-            runSuspendCatching { SourceHealth.recheckHidden() }
+        runCatching {
+            kotlinx.coroutines.MainScope().launch {
+                runSuspendCatching { SourceHealth.recheckHidden() }
+            }
         }
     }
 
@@ -53,6 +60,9 @@ class App : Application(), ImageLoaderFactory, AppFunctionConfiguration.Provider
             .build()
         return ImageLoader.Builder(this)
             .okHttpClient(client)
+            // TV/盒子 GPU 兼容：HARDWARE 位图在大量电视芯片上触发
+            // "Software rendering doesn't support hardware bitmaps" 闪崩，统一关闭
+            .allowHardware(false)
             // 站点 CDN 常下发 no-store/no-cache，会导致封面反复重新下载、滑动卡顿；
             // 这里无视响应缓存头，封面一律走 Coil 本地磁盘缓存（海报内容基本不变）
             .respectCacheHeaders(false)

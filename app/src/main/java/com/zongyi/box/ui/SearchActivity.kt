@@ -33,6 +33,8 @@ class SearchActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // TV/盒子横屏（手机保持布局声明的竖屏），失败不影响启动
+        TvCompat.applyOrientation(this)
         b = ActivitySearchBinding.inflate(layoutInflater)
         setContentView(b.root)
 

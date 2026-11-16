@@ -14,4 +14,5 @@
     <string name="switch_line">切换线路</string>
     <string name="switch_quality">画质</string>
     <string name="episode_list">选集</string>
+    <string name="ai_access">AI 接入</string>
 </resources>

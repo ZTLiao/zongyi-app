@@ -4,9 +4,9 @@ import android.annotation.SuppressLint
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.KeyEvent
 import android.view.View
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
@@ -73,13 +73,17 @@ class PlayerActivity : AppCompatActivity() {
         setContentView(b.root)
 
         // GSY 内核切换为 Media3/Exo（HLS 解码、清晰度自适应、断点续播能力最强）
-        PlayerFactory.setPlayManager(Exo2PlayerManager::class.java)
+        // 全部 player 全局配置逐项兜底：个别 TV ROM 缺组件时降级为默认行为，不崩
+        runCatching { PlayerFactory.setPlayManager(Exo2PlayerManager::class.java) }
 
         // 页面本身已是全屏横屏，隐藏 GSY 自带全屏按钮，
         // 避免触发 startWindowFullscreen 跳转未配置的 GSYFullActivity 而崩溃
-        b.player.getFullscreenButton().visibility = View.GONE
+        runCatching { b.player.getFullscreenButton().visibility = View.GONE }
         // 关闭"当前为移动网络"提示弹窗，避免播放被弹窗打断
-        b.player.setNeedShowWifiTip(false)
+        runCatching { b.player.setNeedShowWifiTip(false) }
+        // TV：关掉 GSY 自带控制栏自动隐藏（会与遥控器手动唤出互相打断、抢焦点），
+        // 改由本类键控逻辑统一显隐（4 秒无操作隐藏，焦点停在按钮上时不隐藏）
+        runCatching { if (TvCompat.isTv(this)) b.player.setDismissControlTime(Int.MAX_VALUE) }
 
         vodId = intent.getIntExtra("id", -1)
         sid = intent.getIntExtra("sid", -1)
@@ -87,22 +91,36 @@ class PlayerActivity : AppCompatActivity() {
         title = intent.getStringExtra("title").orEmpty()
         srcKey = intent.getStringExtra("src") ?: com.zongyi.box.data.Src.JUZI.key
 
-        setupTopBar()
-        setupSidePanel()
-        setupPlayerCallbacks()
+        // 各 setup 相互独立：任一失败仅降级对应功能，不影响取流播放
+        runCatching { setupTopBar() }
+        runCatching { setupSidePanel() }
+        runCatching { setupPlayerCallbacks() }
         play()
     }
 
     private fun setupTopBar() {
         val p = b.player
         p.findViewById<android.widget.ImageView>(R.id.back).setOnClickListener { finish() }
-        p.findViewById<android.widget.ImageView>(R.id.player_btn_speed).setOnClickListener { showSpeedDialog() }
+        // surface_container 全屏铺底，若可聚焦会抢走遥控器焦点搜索（波束算法下
+        // 全屏视图总是赢过同排小按钮）；遥控器按键由 Activity 层 dispatchKeyEvent 统一处理
+        p.findViewById<View>(R.id.surface_container)?.isFocusable = false
+        // SeekBar 构造函数默认 setFocusable(true)，会把遥控器左右焦点吞进进度条
+        // （且无焦点高亮）；快进快退统一由 Activity 层方向键处理
+        p.findViewById<View>(R.id.progress)?.isFocusable = false
+        // 返回键不可聚焦：开播瞬间 GSY 隐藏 thumb 时系统会把焦点重分配给首个
+        // 可聚焦可见视图（顶栏返回键），此后遥控器确认键会误触"返回"退出播放器；
+        // 退出统一由 Activity 层 BACK 键处理
+        p.findViewById<View>(R.id.back)?.isFocusable = false
+        p.findViewById<android.widget.ImageView>(R.id.player_btn_speed).setOnClickListener { showSpeedSheet() }
         p.findViewById<android.widget.ImageView>(R.id.player_btn_prev).setOnClickListener { gotoEpisode(-1) }
         p.findViewById<android.widget.ImageView>(R.id.player_btn_next).setOnClickListener { gotoEpisode(1) }
         p.findViewById<android.widget.ImageView>(R.id.player_btn_line).setOnClickListener { showLineSheet() }
         p.findViewById<android.widget.ImageView>(R.id.player_btn_episodes).setOnClickListener { showEpisodeSheet() }
         playPauseBtn = p.findViewById(R.id.player_btn_playpause)
         playPauseBtn?.setOnClickListener { togglePlayPause() }
+        // 初始焦点与"thumb 被隐藏后的焦点重分配"均落在布局首位的 focus_sink
+        // （1px 常驻可聚焦视图），确保确认键始终由 Activity 层统一处理，
+        // 不会误触返回键/线路按钮
         // 标题走 GSY 内置顶栏（随控制栏一起显隐）
         p.findViewById<android.widget.TextView>(R.id.title).text = title
         updatePlayPauseIcon()
@@ -124,6 +142,11 @@ class PlayerActivity : AppCompatActivity() {
             p.onVideoPause()
         } else if (p.currentState == com.shuyu.gsyvideoplayer.video.base.GSYVideoView.CURRENT_STATE_PAUSE) {
             p.onVideoResume()
+        } else if (p.currentState ==
+            com.shuyu.gsyvideoplayer.video.base.GSYVideoView.CURRENT_STATE_AUTO_COMPLETE
+        ) {
+            // 播完停在末帧：遥控器按确认键从头重播
+            p.startPlayLogic()
         }
         updatePlayPauseIcon()
     }
@@ -158,30 +181,31 @@ class PlayerActivity : AppCompatActivity() {
             override fun onClickResumeFullscreen(s: String?, vararg objects: Any?) {}
             override fun onClickSeekbar(s: String?, vararg objects: Any?) {}
             override fun onClickSeekbarFullscreen(s: String?, vararg objects: Any?) {}
-            override fun onAutoComplete(s: String?, vararg objects: Any?) {}
-            override fun onComplete(s: String?, vararg objects: Any?) {
-                // 只有"当前正在播放的这一集"自然播完才自动连播。
-                // 切换集数时旧播放器被释放/中断也会触发本回调（s 是旧集 URL），
-                // 不加过滤会造成"切一集就连锁跳到底"的 bug。
+            override fun onAutoComplete(s: String?, vararg objects: Any?) {
+                // 自然播完：GSY 在 ExoPlayer STATE_ENDED（正常播完）时回调的是
+                // onAutoComplete 而非 onComplete（onComplete 只在手动停止等场景触发）
                 if (s == null || s != currentUrl) {
-                    android.util.Log.i("ZongYiBox", "onComplete(忽略:非当前集) s=$s current=$currentUrl")
+                    android.util.Log.i("ZongYiBox", "onAutoComplete(忽略:非当前集) s=$s current=$currentUrl")
                     return
                 }
-                // 二次过滤：切集时 GSY 在 startPlayLogic 后会立刻回一次伪完成回调
-                // （pos=0 / dur=新集时长），只有真实播完（pos 接近 dur）才自动连播
+                // 二次过滤：切集时旧播放器释放可能产生伪回调，
+                // 只有位置接近片尾（或位置读数无效）才自动连播
                 val pos = b.player.currentPositionWhenPlaying
                 val dur = b.player.duration
-                if (pos <= 0 || dur <= 0 || pos < dur - 60_000) {
-                    android.util.Log.i("ZongYiBox", "onComplete(忽略:未真实播完) pos=$pos dur=$dur")
+                if (dur > 0 && pos > 0 && pos < dur - 60_000) {
+                    android.util.Log.i("ZongYiBox", "onAutoComplete(忽略:未真实播完) pos=$pos dur=$dur")
                     return
                 }
-                android.util.Log.i("ZongYiBox", "onComplete(生效) pos=$pos dur=$dur")
+                android.util.Log.i("ZongYiBox", "onAutoComplete(生效) pos=$pos dur=$dur")
                 saveHistory()
                 // 追更场景：本集播完自动连播下一集
                 uiHandler.post {
                     if (isFinishing || isDestroyed) return@post
                     gotoEpisode(1, silent = true)
                 }
+            }
+            override fun onComplete(s: String?, vararg objects: Any?) {
+                // 自然播完走 onAutoComplete（见上），此处不再处理连播
             }
 
             override fun onEnterFullscreen(s: String?, vararg objects: Any?) {}
@@ -282,6 +306,8 @@ class PlayerActivity : AppCompatActivity() {
         p.setSpeed(speeds[speedIndex])
         resetProgressUi()
         p.startPlayLogic()
+        // TV：开播即显示控制栏并启动自动隐藏计时（暂停时保持显示）
+        if (isTvDevice) showControlsTemporarily()
         resumed = true
         saveHistory()
         startProgressPolling()
@@ -322,6 +348,9 @@ class PlayerActivity : AppCompatActivity() {
                 if (isFinishing || isDestroyed) return
                 saveHistory()
                 updatePlayPauseIcon()
+                // TV：GSY 每次缓冲恢复都会重新显示中央按钮（其隐藏依赖已被
+                // 禁用的 dismissControlTask），轮询中持续纠正
+                syncCenterButton()
                 uiHandler.postDelayed(this, 3_000)
             }
         }
@@ -426,17 +455,23 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
-    private fun showSpeedDialog() {
-        val items = speeds.map { if (it == 1.0f) "1.0x 常速" else "${it}x" }.toTypedArray()
-        AlertDialog.Builder(this, R.style.Theme_ZongYiBox)
-            .setTitle("倍速播放")
-            .setSingleChoiceItems(items, speedIndex) { dlg, which ->
-                speedIndex = which
-                b.player.setSpeed(speeds[which])
-                Toast.makeText(this, "已切换为 ${speeds[which]}x", Toast.LENGTH_SHORT).show()
-                dlg.dismiss()
+    /** 倍速切换：与切换线路相同的右侧侧边栏面板交互 */
+    private fun showSpeedSheet() {
+        showSidePanel("倍速播放") { list ->
+            var selected: View? = null
+            speeds.forEachIndexed { i, s ->
+                val label = if (s == 1.0f) "1.0x 常速" else "${s}x"
+                val row = panelRow(label, i == speedIndex) {
+                    hideSidePanel()
+                    speedIndex = i
+                    b.player.setSpeed(s)
+                    Toast.makeText(this, "已切换为 ${label}", Toast.LENGTH_SHORT).show()
+                }
+                if (i == speedIndex) selected = row
+                list.addView(row)
             }
-            .show()
+            selected
+        }
     }
 
     // ---------- 右侧侧边栏（B 站风格选集/线路面板） ----------
@@ -464,7 +499,11 @@ class PlayerActivity : AppCompatActivity() {
         b.panelRoot.alpha = 0f
         b.panelRoot.animate().alpha(1f).setDuration(160).start()
         b.panelSide.animate().translationX(0f).setDuration(220).start()
-        selected?.let { b.panelScroll.post { b.panelScroll.scrollTo(0, (it.top - 140).coerceAtLeast(0)) } }
+        selected?.let { sel ->
+            b.panelScroll.post { b.panelScroll.scrollTo(0, (sel.top - 140).coerceAtLeast(0)) }
+            // TV：把遥控器焦点落到当前选中行，上下键直接在面板内导航
+            sel.post { sel.requestFocus() }
+        }
     }
 
     private fun hideSidePanel() {
@@ -487,9 +526,7 @@ class PlayerActivity : AppCompatActivity() {
             if (selected) {
                 setBackgroundResource(R.drawable.bg_panel_row_selected)
             } else {
-                val tv = android.util.TypedValue()
-                theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
-                if (tv.resourceId != 0) setBackgroundResource(tv.resourceId)
+                setBackgroundResource(R.drawable.bg_panel_row)
             }
             isClickable = true
             isFocusable = true
@@ -519,7 +556,216 @@ class PlayerActivity : AppCompatActivity() {
         saveHistory()
     }
 
+    // ---------- 遥控器 / 键盘（TV 适配） ----------
+
+    /** 播放器控制栏内可聚焦的按钮 id 集合 */
+    private val controlIds = setOf(
+        R.id.back, R.id.player_btn_line,
+        R.id.player_btn_playpause, R.id.player_btn_speed,
+        R.id.player_btn_episodes, R.id.player_btn_prev, R.id.player_btn_next
+    )
+
+    private fun isControlFocused(): Boolean = currentFocus?.id in controlIds
+
+    private fun controlsVisible(): Boolean {
+        val top = b.player.findViewById<View>(R.id.layout_top) ?: return false
+        val bottom = b.player.findViewById<View>(R.id.layout_bottom) ?: return false
+        return top.isVisible && bottom.isVisible
+    }
+
+    /**
+     * 遥控器按键统一在 Activity 层先行拦截：
+     * 焦点可能落在 GSY 的 surface_container（可点击 View）上，它会把
+     * 确认键消费成"点击切换控制栏显隐"、把方向键吞掉，导致 onKeyDown
+     * 收不到事件。这里在事件进入视图层级前先交给 onKeyDown 处理。
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN &&
+            !b.panelRoot.isVisible && !isControlFocused()
+        ) {
+            val seek = when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND,
+                KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> true
+                else -> false
+            }
+            if (seek || event.repeatCount == 0) {
+                when (event.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+                    KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+                    KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE,
+                    KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND,
+                    KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
+                    KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN ->
+                        return onKeyDown(event.keyCode, event)
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    /**
+     * TV 遥控器键控：
+     * - BACK：侧栏打开时只收起侧栏，否则退出播放
+     * - 确认键 / 空格 / 媒体键：播放 / 暂停（焦点在控制按钮上时交给按钮）
+     * - 左右方向键：快退 / 快进 10 秒（焦点在控制按钮上时是焦点移动）
+     * - 下方向键：唤出控制栏并把焦点落到播放/暂停按钮，可在按钮间导航
+     * - 上方向键：仅唤出控制栏预览（4 秒后自动隐藏）
+     * - 侧栏打开时方向键交给焦点系统（选集/线路面板内移动）
+     */
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_BACK && b.panelRoot.isVisible) {
+            hideSidePanel()
+            return true
+        }
+        // 侧栏打开：方向键/确认键交给面板焦点系统
+        if (b.panelRoot.isVisible) return super.onKeyDown(keyCode, event)
+        // 焦点在控制按钮上：方向键/确认键交给焦点系统（按钮点击/焦点移动）
+        if (isControlFocused()) return super.onKeyDown(keyCode, event)
+        when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                togglePlayPause()
+                showControlsTemporarily()
+                return true
+            }
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                seekBy(-10_000)
+                showControlsTemporarily()
+                return true
+            }
+            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                seekBy(10_000)
+                showControlsTemporarily()
+                return true
+            }
+            KeyEvent.KEYCODE_DPAD_UP -> {
+                showControlsTemporarily()
+                return true
+            }
+            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                if (!controlsVisible()) {
+                    showControlsTemporarily()
+                    // post 确保在 layout_bottom 可见并完成布局后再请求焦点，
+                    // 否则焦点请求会被同帧布局吞掉（焦点仍留在 surface 上）
+                    b.player.findViewById<View>(R.id.player_btn_playpause)?.also { btn ->
+                        btn.post { btn.requestFocus() }
+                    }
+                    return true
+                }
+                return super.onKeyDown(keyCode, event)
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    /** 快进/快退（仅在播放或暂停态生效），并同步 GSY 进度条 */
+    private fun seekBy(deltaMs: Long) {
+        val p = b.player
+        val active = p.currentState == com.shuyu.gsyvideoplayer.video.base.GSYVideoView.CURRENT_STATE_PLAYING ||
+            p.currentState == com.shuyu.gsyvideoplayer.video.base.GSYVideoView.CURRENT_STATE_PAUSE
+        if (!active) return
+        val dur = p.duration
+        if (dur <= 0) return
+        val target = (p.currentPositionWhenPlaying + deltaMs).coerceIn(0L, dur)
+        p.seekTo(target)
+    }
+
+    /** 控制栏自动隐藏任务（遥控器/键盘唤出用，4 秒后收起） */
+    private var controlsHideTask: Runnable? = null
+
+    /** 当前设备是否为 TV/盒子（TV 上 GSY 自动隐藏已禁用，控制栏显隐由本方法统一管理） */
+    private val isTvDevice by lazy { TvCompat.isTv(this) }
+
+    /**
+     * 唤出顶栏/底栏控制栏，4 秒无操作自动隐藏。
+     * 隐藏条件：正在播放 + 无侧栏打开 + 焦点不在控制按钮上；
+     * 暂停/缓冲时保持显示（TV 常见行为），条件满足后 2 秒复查。
+     */
+    /** TV：中央播放/暂停大按钮纳入统一显隐管理（暂停/播完显示，播放中隐藏） */
+    private fun syncCenterButton() {
+        if (!isTvDevice) return
+        val center = b.player.findViewById<View>(R.id.start) ?: return
+        val state = b.player.currentState
+        center.isVisible = state ==
+            com.shuyu.gsyvideoplayer.video.base.GSYVideoView.CURRENT_STATE_PAUSE ||
+            state == com.shuyu.gsyvideoplayer.video.base.GSYVideoView.CURRENT_STATE_AUTO_COMPLETE
+    }
+
+    private fun showControlsTemporarily() {
+        cancelGsyDismissTimer()
+        val top = b.player.findViewById<View>(R.id.layout_top) ?: return
+        val bottom = b.player.findViewById<View>(R.id.layout_bottom) ?: return
+        top.isVisible = true
+        bottom.isVisible = true
+        // TV：中央按钮随控制栏显隐（GSY 状态变化时会把中央按钮显示出来，
+        // 而其隐藏依赖 dismissControlTask——TV 上已被禁用，会永久残留）
+        syncCenterButton()
+        controlsHideTask?.let { uiHandler.removeCallbacks(it) }
+        val task = object : Runnable {
+            override fun run() {
+                if (isFinishing || isDestroyed) return
+                // 侧栏打开 / 焦点停在控制按钮上（遥控器导航中）：延迟复查，暂不隐藏
+                if (b.panelRoot.isVisible || isControlFocused()) {
+                    uiHandler.postDelayed(this, 2_000)
+                    return
+                }
+                // 仅播放中自动隐藏：暂停/缓冲时保持显示
+                val playing = b.player.currentState ==
+                    com.shuyu.gsyvideoplayer.video.base.GSYVideoView.CURRENT_STATE_PLAYING
+                if (!playing) {
+                    uiHandler.postDelayed(this, 2_000)
+                    return
+                }
+                top.isVisible = false
+                bottom.isVisible = false
+                // TV：中央大按钮随控制栏一起收起（避免播放中残留暂停/播放图标）
+                if (isTvDevice) {
+                    b.player.findViewById<View>(R.id.start)?.isVisible = false
+                }
+                // 保险：焦点若还在将隐藏的控制按钮上，交回焦点沉底视图
+                if (isControlFocused()) {
+                    b.player.findViewById<View>(R.id.focus_sink)?.requestFocus()
+                }
+            }
+        }
+        controlsHideTask = task
+        uiHandler.postDelayed(task, 4_000)
+    }
+
+    /**
+     * 取消 GSY 内部待触发的自动隐藏计时（cancelDismissControlViewTimer 为 protected，
+     * 用反射调用）。GSY 的 dismissControlTask 会在触摸/点击/状态变化时被反复调度，
+     * 若不取消，它可能在我们手动唤出控件后 1~2 秒内触发 hideAllWidget()，
+     * 造成"刚唤出就消失"的竞态。TV 上 GSY 自动隐藏已整体禁用，此处为触屏端兜底。
+     */
+    private fun cancelGsyDismissTimer() {
+        runCatching {
+            b.player.javaClass
+                .getSuperclassRecursive("cancelDismissControlViewTimer")
+                ?.let { m ->
+                    m.isAccessible = true
+                    m.invoke(b.player)
+                }
+        }
+    }
+
+    private fun Class<*>.getSuperclassRecursive(methodName: String): java.lang.reflect.Method? {
+        var c: Class<*>? = this
+        while (c != null) {
+            try {
+                return c.getDeclaredMethod(methodName)
+            } catch (_: NoSuchMethodException) {
+                c = c.superclass
+            } catch (_: SecurityException) {
+                return null
+            }
+        }
+        return null
+    }
+
     override fun onDestroy() {
+        controlsHideTask?.let { uiHandler.removeCallbacks(it) }
         stopProgressPolling()
         GSYVideoManager.releaseAllVideos()
         super.onDestroy()

@@ -90,14 +90,18 @@ object SiteApi {
     }
 
     /** 源健康探测用：拉取页面原文（不做域名切换、不计失败） */
-    suspend fun fetchHtmlPublic(url: String): String = fetchHtmlOnce(url)
+    suspend fun fetchHtmlPublic(url: String): String = withContext(Dispatchers.IO) {
+        fetchHtmlOnce(url)
+    }
 
     /** 探测源当前是否可用（首页可访问且内容签名匹配） */
-    suspend fun probe(src: Src): Boolean = try {
-        val html = fetchHtmlPublic(src.base + "/")
-        src.markers.any { html.contains(it) }
-    } catch (_: Exception) {
-        false
+    suspend fun probe(src: Src): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val html = fetchHtmlOnce(src.base + "/")
+            src.markers.any { html.contains(it) }
+        } catch (_: Exception) {
+            false
+        }
     }
 
     /**
@@ -172,6 +176,19 @@ object SiteApi {
             val cached = HttpCache.loadFresh(url, ttlMs)
             if (cached != null) return@withContext Parser55.parsePage(cached, page)
             Parser55.parsePage(getHtml(url), page)
+        }
+    }
+
+    /** 猴影工坊分类列表（类型 genre / 年代 year / 排序 orderBy 组合筛选 + 分页） */
+    suspend fun categoryMf(
+        cat: Int, genre: String, year: String, orderBy: String,
+        page: Int, ttlMs: Long = 0,
+    ): PageData {
+        val url = ParserMonkey.browseUrl(cat, page, genre, year, orderBy)
+        return withContext(Dispatchers.Default) {
+            val cached = HttpCache.loadFresh(url, ttlMs)
+            if (cached != null) return@withContext ParserMonkey.parsePage(cached, page)
+            ParserMonkey.parsePage(getHtml(url), page)
         }
     }
 

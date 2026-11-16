@@ -1,8 +1,8 @@
 package com.zongyi.box.data
 
-import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
-import org.jsoup.nodes.Element
+import com.zongyi.jsoup.Jsoup
+import com.zongyi.jsoup.nodes.Document
+import com.zongyi.jsoup.nodes.Element
 
 /**
  * 555影视（www.5k35.top 等 mxone/MacCMS 标准模板）解析器。
