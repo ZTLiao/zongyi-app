@@ -1,6 +1,6 @@
 # 综艺盒子（ZongYiBox）
 
-综艺追更/播放 Android 客户端。纯原生 Kotlin 实现，无 WebView、无第三方跳转。
+综艺,动漫,NBA追更/播放 Android 客户端。纯原生 Kotlin 实现，无 WebView、无第三方跳转。
 
 ## 技术栈
 
