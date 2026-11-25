@@ -80,7 +80,9 @@ class MineFragment : Fragment() {
             textSize = 12f
             setTextColor(androidx.core.content.ContextCompat.getColor(ctx, R.color.text_secondary))
             setPadding(0, 16, 0, 0)
-            text = "开启后 AI（本机或局域网）可通过 HTTP 调用 app 的搜索、详情、播放、历史、收藏等功能：\nGET /appfunction 功能清单 · POST /appfunction/call 调用\n鉴权：X-Api-Token 或 ?token="
+            text = "开启后 AI（本机或局域网）可通过 HTTP 调用 app 的搜索、详情、播放、历史、收藏，" +
+                "以及体育赛程、直播/录像播放与播放器控制（倍速/画面比例/侧栏/控制条/切线路）等功能：\n" +
+                "GET /appfunction 功能清单 · POST /appfunction/call 调用\n鉴权：X-Api-Token 或 ?token="
         }
         val btnCopy = android.widget.TextView(ctx).apply {
             textSize = 13f

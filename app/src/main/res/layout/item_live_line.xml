@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 播放页线路行：选中（播放中）橙色胶囊，失效行置灰 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="8dp"
+    android:background="@drawable/bg_live_chip"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="12dp"
+    android:paddingTop="9dp"
+    android:paddingEnd="12dp"
+    android:paddingBottom="9dp">
+
+    <TextView
+        android:id="@+id/tvLineName"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/live_chip_text"
+        android:textSize="13sp" />
+
+    <TextView
+        android:id="@+id/tvLineState"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:textColor="@color/text_secondary"
+        android:textSize="10sp" />
+</LinearLayout>

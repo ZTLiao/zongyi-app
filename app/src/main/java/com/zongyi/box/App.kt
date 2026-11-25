@@ -8,6 +8,7 @@ import com.zongyi.box.appfunctions.ZongYiAppFunctions
 import com.zongyi.box.data.BrowserHeaders
 import com.zongyi.box.data.DomainStore
 import com.zongyi.box.data.HttpCache
+import com.zongyi.box.data.LiveApi
 import com.zongyi.box.data.Parser
 import com.zongyi.box.data.SourceHealth
 import com.zongyi.box.data.runSuspendCatching
@@ -24,6 +25,8 @@ class App : Application(), ImageLoaderFactory, AppFunctionConfiguration.Provider
         runCatching { HttpCache.init(this) }
         runCatching { DomainStore.init(this) }
         runCatching { SourceHealth.init(this) }
+        // 直播源：恢复上次可用域名与地址发布页发现的镜像
+        runCatching { LiveApi.init(this) }
         // appfunction AI 接入桥：用户开启过则随冷启动恢复监听
         runCatching {
             if (com.zongyi.box.data.AiBridge.isEnabled(this)) {

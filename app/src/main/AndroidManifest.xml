@@ -51,6 +51,12 @@
             android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.ZongYiBox.Player" />
 
+        <activity
+            android:name=".ui.LivePlayerActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|density|uiMode"
+            android:screenOrientation="sensorLandscape"
+            android:theme="@style/Theme.ZongYiBox.Player" />
+
         <!-- GSY 内部全屏页兜底（顶栏已隐藏全屏按钮，防其他入口触发 ActivityNotFound） -->
         <activity
             android:name="com.shuyu.gsyvideoplayer.GSYFullActivity"
